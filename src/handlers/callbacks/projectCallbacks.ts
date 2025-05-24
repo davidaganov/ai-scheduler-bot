@@ -9,7 +9,13 @@ import {
   formatTaskList,
   createTaskListHeader,
 } from "../../utils";
-import { SCREEN_STATE, TASK_STATUS } from "../../types";
+import {
+  SCREEN_STATE,
+  TASK_STATUS,
+  NAVIGATION_ACTION,
+  TASK_STATUS_EMOJI,
+  TASK_STATUS_TITLE,
+} from "../../types";
 import { onNextTextMessage } from "../../services/session";
 import { safeAnswerCbQuery } from "./utils";
 
@@ -18,36 +24,81 @@ import { safeAnswerCbQuery } from "./utils";
  * @param bot - Telegraf bot instance
  */
 export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
+  // Вспомогательные функции
+  const logAction = (action: string, project?: string) => {
+    const message = project ? `${action}: "${project}"` : action;
+    console.log(message);
+  };
+
+  const handleError = async (
+    ctx: Context,
+    errorMsg: string,
+    error: any,
+    callbackMsg: string = "Ошибка при обработке"
+  ) => {
+    console.log(errorMsg, error?.message || error);
+    await safeAnswerCbQuery(ctx, callbackMsg);
+  };
+
+  const renderProjectInfo = (project: string) => {
+    const stats = dbService.getProjectStats(project);
+    return (
+      `📁 Проект: <b>${project}</b>\n\n` +
+      `📊 Статистика:\n` +
+      `   • Всего задач: ${stats.total}\n` +
+      `   • ${TASK_STATUS_EMOJI.NOT_STARTED} ${TASK_STATUS_TITLE.NOT_STARTED}: ${stats.notStarted}\n` +
+      `   • ${TASK_STATUS_EMOJI.IN_PROGRESS} ${TASK_STATUS_TITLE.IN_PROGRESS}: ${stats.inProgress}\n` +
+      `   • ${TASK_STATUS_EMOJI.DONE} ${TASK_STATUS_TITLE.DONE}: ${stats.done}\n\n` +
+      `Выберите действие:`
+    );
+  };
+
+  const renderProjectsList = () => {
+    const projects = dbService.getProjects();
+
+    if (projects.length === 0) {
+      return {
+        text: "📁 У вас пока нет проектов.\n\nНажмите кнопку ниже, чтобы создать первый проект:",
+        keyboard: getKeyboardByScreenState(
+          [],
+          SCREEN_STATE.PROJECT_MANAGEMENT,
+          { projects }
+        ),
+      };
+    }
+
+    let projectsInfo = "📁 Управление проектами:\n\n";
+    projects.forEach((project) => {
+      const stats = dbService.getProjectStats(project);
+      projectsInfo += `📂 <b>${project}</b>\n`;
+      projectsInfo += `   📊 Всего: ${stats.total} | ⏳ ${stats.notStarted} | 🚧 ${stats.inProgress} | ✅ ${stats.done}\n\n`;
+    });
+
+    return {
+      text: projectsInfo,
+      keyboard: getKeyboardByScreenState([], SCREEN_STATE.PROJECT_MANAGEMENT, {
+        projects,
+      }),
+    };
+  };
+
   /**
    * Project management
    */
   bot.action(/^manage_project:(.+)$/, async (ctx) => {
     const project = ctx.match[1];
-    const stats = dbService.getProjectStats(project);
 
     try {
-      console.log(
-        `Навигация: Пользователь открыл управление проектом "${project}"`
-      );
+      logAction("Навигация: Пользователь открыл управление проектом", project);
 
-      const projectInfo =
-        `📁 Проект: <b>${project}</b>\n\n` +
-        `📊 Статистика:\n` +
-        `   • Всего задач: ${stats.total}\n` +
-        `   • ⏳ Не начато: ${stats.notStarted}\n` +
-        `   • 🚧 В работе: ${stats.inProgress}\n` +
-        `   • ✅ Сделано: ${stats.done}\n\n` +
-        `Выберите действие:`;
-
-      await ctx.editMessageText(projectInfo, {
+      await ctx.editMessageText(renderProjectInfo(project), {
         parse_mode: "HTML",
         ...createProjectActionsKeyboard(project),
       });
 
       await safeAnswerCbQuery(ctx);
     } catch (error: any) {
-      console.log("Ошибка при управлении проектом:", error.message);
-      await safeAnswerCbQuery(ctx, "Ошибка при обработке");
+      await handleError(ctx, "Ошибка при управлении проектом:", error);
     }
   });
 
@@ -57,78 +108,62 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
   bot.action("add_new_project", async (ctx) => {
     if (!ctx.chat) return;
 
-    const chatId = ctx.chat.id;
-
     try {
-      console.log(`Навигация: Пользователь начал создание нового проекта`);
+      logAction("Навигация: Пользователь начал создание нового проекта");
 
-      // Set the state of waiting for the project name
-      sessionService.setUserState(chatId, "waiting_for_project_name");
+      sessionService.setUserState(ctx.chat.id, "waiting_for_project_name");
 
       await ctx.editMessageText(
         "🆕 Создание нового проекта\n\nВведите название проекта:"
       );
-
       await safeAnswerCbQuery(ctx, "Введите название проекта");
     } catch (error: any) {
-      console.log("Ошибка при создании проекта:", error.message);
-      await safeAnswerCbQuery(ctx, "Ошибка при обработке");
+      await handleError(ctx, "Ошибка при создании проекта:", error);
     }
   });
 
   /**
-   * Clearing the project
+   * Confirmation dialogs (delete, clear)
    */
-  bot.action(/^clear_project:(.+)$/, async (ctx) => {
-    const project = ctx.match[1];
+  const setupConfirmationDialog = (
+    action: string,
+    emoji: string,
+    description: string
+  ) => {
+    bot.action(new RegExp(`^${action}_project:(.+)$`), async (ctx) => {
+      const project = ctx.match[1];
 
-    try {
-      console.log(
-        `Действие: Пользователь запросил очистку проекта "${project}"`
-      );
+      try {
+        logAction(`Действие: Пользователь запросил ${action} проекта`, project);
 
-      const confirmMessage =
-        `🧹 Очистка проекта "${project}"\n\n` +
-        `⚠️ Это действие удалит ВСЕ задачи в проекте!\n` +
-        `Проект останется, но задачи будут безвозвратно удалены.\n\n` +
-        `Вы уверены?`;
+        const confirmMessage = `${emoji} ${description.replace(
+          "{project}",
+          project
+        )}`;
 
-      await ctx.editMessageText(confirmMessage, {
-        parse_mode: "HTML",
-        ...createProjectConfirmationKeyboard("clear", project),
-      });
+        await ctx.editMessageText(confirmMessage, {
+          parse_mode: "HTML",
+          ...createProjectConfirmationKeyboard(action, project),
+        });
 
-      await safeAnswerCbQuery(ctx);
-    } catch (error: any) {
-      console.log("Ошибка при запросе очистки проекта:", error.message);
-      await safeAnswerCbQuery(ctx, "Ошибка при обработке");
-    }
-  });
+        await safeAnswerCbQuery(ctx);
+      } catch (error: any) {
+        await handleError(ctx, `Ошибка при запросе ${action} проекта:`, error);
+      }
+    });
+  };
 
-  /**
-   * Deleting the project
-   */
-  bot.action(/^delete_project:(.+)$/, async (ctx) => {
-    const project = ctx.match[1];
-
-    try {
-      console.log(
-        `Действие: Пользователь запросил удаление проекта "${project}"`
-      );
-
-      const confirmMessage = `🗑️ Вы уверены, что хотите удалить проект "${project}"?\n\nВсе задачи этого проекта будут помечены как задачи без проекта.`;
-
-      await ctx.editMessageText(confirmMessage, {
-        parse_mode: "HTML",
-        ...createProjectConfirmationKeyboard("delete", project),
-      });
-
-      await safeAnswerCbQuery(ctx);
-    } catch (error: any) {
-      console.log("Ошибка при запросе удаления проекта:", error.message);
-      await safeAnswerCbQuery(ctx, "Ошибка при обработке запроса");
-    }
-  });
+  // Настройка диалогов подтверждения
+  setupConfirmationDialog(
+    "clear",
+    "🧹",
+    'Очистка проекта "{project}"\n\n⚠️ Это действие удалит ВСЕ задачи в проекте!\nПроект останется, но задачи будут безвозвратно удалены.\n\nВы уверены?'
+  );
+  setupConfirmationDialog(
+    "delete",
+    "🗑️",
+    'Вы уверены, что хотите удалить проект "{project}"?\n\nВсе задачи этого проекта будут помечены как задачи без проекта.'
+  );
 
   /**
    * Confirmation of project clearing
@@ -137,20 +172,20 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
     const project = ctx.match[1];
 
     try {
-      console.log(
-        `Действие: Пользователь подтвердил очистку проекта "${project}"`
-      );
+      logAction("Действие: Пользователь подтвердил очистку проекта", project);
 
       const clearedCount = dbService.clearProject(project);
-
       await ctx.editMessageText(
-        `✅ Проект "${project}" очищен.\n` + `Удалено задач: ${clearedCount}`
+        `✅ Проект "${project}" очищен.\nУдалено задач: ${clearedCount}`
       );
-
       await safeAnswerCbQuery(ctx, "Проект очищен");
     } catch (error: any) {
-      console.log("Ошибка при очистке проекта:", error.message);
-      await safeAnswerCbQuery(ctx, "Ошибка при очистке");
+      await handleError(
+        ctx,
+        "Ошибка при очистке проекта:",
+        error,
+        "Ошибка при очистке"
+      );
     }
   });
 
@@ -161,36 +196,16 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
     const project = ctx.match[1];
 
     try {
-      console.log(
-        `Действие: Пользователь подтвердил удаление проекта "${project}"`
-      );
+      logAction("Действие: Пользователь подтвердил удаление проекта", project);
 
       const success = dbService.deleteProject(project);
 
       if (success) {
-        const projects = dbService.getProjects();
-
-        let text;
-        if (projects.length === 0) {
-          text =
-            "📁 У вас пока нет проектов.\n\nНажмите кнопку ниже, чтобы создать первый проект:";
-        } else {
-          let projectsInfo = "📁 Управление проектами:\n\n";
-          projects.forEach((project) => {
-            const stats = dbService.getProjectStats(project);
-            projectsInfo += `📂 <b>${project}</b>\n`;
-            projectsInfo += `   📊 Всего: ${stats.total} | ⏳ ${stats.notStarted} | 🚧 ${stats.inProgress} | ✅ ${stats.done}\n\n`;
-          });
-          text = projectsInfo;
-        }
-
+        const { text, keyboard } = renderProjectsList();
         await ctx.editMessageText(text, {
           parse_mode: "HTML",
-          ...getKeyboardByScreenState([], SCREEN_STATE.PROJECT_MANAGEMENT, {
-            projects,
-          }),
+          ...keyboard,
         });
-
         await safeAnswerCbQuery(ctx, `Проект "${project}" удален`);
       } else {
         await ctx.editMessageText(`❌ Не удалось удалить проект "${project}"`);
@@ -204,133 +219,77 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
   });
 
   /**
-   * Cancellation of project clearing
+   * Cancel operations and return to project info
    */
-  bot.action(/^cancel_project_clear:(.+)$/, async (ctx) => {
-    const project = ctx.match[1];
+  const setupCancelAction = (action: string) => {
+    bot.action(new RegExp(`^cancel_project_${action}:(.+)$`), async (ctx) => {
+      const project = ctx.match[1];
 
-    try {
-      console.log(
-        `Действие: Пользователь отменил очистку проекта "${project}"`
-      );
+      try {
+        logAction(`Действие: Пользователь отменил ${action} проекта`, project);
 
-      const stats = dbService.getProjectStats(project);
-      const projectInfo =
-        `📁 Проект: <b>${project}</b>\n\n` +
-        `📊 Статистика:\n` +
-        `   • Всего задач: ${stats.total}\n` +
-        `   • ⏳ Не начато: ${stats.notStarted}\n` +
-        `   • 🚧 В работе: ${stats.inProgress}\n` +
-        `   • ✅ Сделано: ${stats.done}\n\n` +
-        `Выберите действие:`;
+        await ctx.editMessageText(renderProjectInfo(project), {
+          parse_mode: "HTML",
+          ...createProjectActionsKeyboard(project),
+        });
 
-      await ctx.editMessageText(projectInfo, {
-        parse_mode: "HTML",
-        ...createProjectActionsKeyboard(project),
-      });
+        await safeAnswerCbQuery(
+          ctx,
+          `${action === "clear" ? "Очистка" : "Удаление"} отменена`
+        );
+      } catch (error: any) {
+        await handleError(
+          ctx,
+          `Ошибка при отмене ${action} проекта:`,
+          error,
+          "Ошибка"
+        );
+      }
+    });
+  };
 
-      await safeAnswerCbQuery(ctx, "Очистка отменена");
-    } catch (error: any) {
-      console.log("Ошибка при отмене очистки:", error.message);
-      await safeAnswerCbQuery(ctx, "Ошибка");
-    }
-  });
-
-  /**
-   * Cancellation of project deletion
-   */
-  bot.action(/^cancel_project_delete:(.+)$/, async (ctx) => {
-    const project = ctx.match[1];
-
-    try {
-      console.log(
-        `Действие: Пользователь отменил удаление проекта "${project}"`
-      );
-
-      const stats = dbService.getProjectStats(project);
-      const projectInfo =
-        `📁 Проект: <b>${project}</b>\n\n` +
-        `📊 Статистика:\n` +
-        `   • Всего задач: ${stats.total}\n` +
-        `   • ⏳ Не начато: ${stats.notStarted}\n` +
-        `   • 🚧 В работе: ${stats.inProgress}\n` +
-        `   • ✅ Сделано: ${stats.done}\n\n` +
-        `Выберите действие:`;
-
-      await ctx.editMessageText(projectInfo, {
-        parse_mode: "HTML",
-        ...createProjectActionsKeyboard(project),
-      });
-
-      await safeAnswerCbQuery(ctx, "Удаление отменено");
-    } catch (error: any) {
-      console.log("Ошибка при отмене удаления проекта:", error.message);
-      await safeAnswerCbQuery(ctx, "Ошибка");
-    }
-  });
+  // Настройка действий отмены
+  setupCancelAction("clear");
+  setupCancelAction("delete");
 
   /**
    * Return to the list of projects
    */
-  bot.action("back_to_projects", async (ctx) => {
+  bot.action(NAVIGATION_ACTION.BACK_TO_PROJECTS, async (ctx) => {
     try {
-      console.log(`Навигация: Пользователь вернулся к списку проектов`);
+      logAction("Навигация: Пользователь вернулся к списку проектов");
 
-      const projects = dbService.getProjects();
-
-      if (projects.length === 0) {
-        await ctx.editMessageText(
-          "📁 У вас пока нет проектов.\n\nНажмите кнопку ниже, чтобы создать первый проект:",
-          getKeyboardByScreenState([], SCREEN_STATE.PROJECT_MANAGEMENT, {
-            projects,
-          })
-        );
-      } else {
-        let projectsInfo = "📁 Управление проектами:\n\n";
-
-        projects.forEach((project) => {
-          const stats = dbService.getProjectStats(project);
-          projectsInfo += `📂 <b>${project}</b>\n`;
-          projectsInfo += `   📊 Всего: ${stats.total} | ⏳ ${stats.notStarted} | 🚧 ${stats.inProgress} | ✅ ${stats.done}\n\n`;
-        });
-
-        await ctx.editMessageText(projectsInfo, {
-          parse_mode: "HTML",
-          ...getKeyboardByScreenState([], SCREEN_STATE.PROJECT_MANAGEMENT, {
-            projects,
-          }),
-        });
-      }
+      const { text, keyboard } = renderProjectsList();
+      await ctx.editMessageText(text, {
+        parse_mode: "HTML",
+        ...keyboard,
+      });
 
       await safeAnswerCbQuery(ctx);
     } catch (error: any) {
-      console.log("Ошибка при возврате к проектам:", error.message);
-      await safeAnswerCbQuery(ctx, "Ошибка при обработке");
+      await handleError(ctx, "Ошибка при возврате к проектам:", error);
     }
   });
 
   /**
    * Create a new project
    */
-  bot.action("create_project", async (ctx) => {
+  bot.action(NAVIGATION_ACTION.CREATE_PROJECT, async (ctx) => {
     try {
-      console.log(`Навигация: Пользователь начал создание нового проекта`);
+      logAction("Навигация: Пользователь начал создание нового проекта");
 
       await ctx.editMessageText(
-        `📁 Создание нового проекта\n\nОтправьте название проекта в следующем сообщении:`,
+        "📁 Создание нового проекта\n\nОтправьте название проекта в следующем сообщении:",
         getKeyboardByScreenState([], SCREEN_STATE.PROJECT_MANAGEMENT)
       );
       await safeAnswerCbQuery(ctx);
 
-      // Register a one-time event handler for the next text message
       const userId = ctx.from?.id;
       if (userId) {
         onNextTextMessage(userId, async (context: Context, text: string) => {
           try {
             const projectName = text.trim();
-            console.log(
-              `Действие: Пользователь создал проект "${projectName}"`
-            );
+            logAction("Действие: Пользователь создал проект", projectName);
 
             if (projectName.length === 0) {
               await context.reply(
@@ -339,7 +298,6 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
               return;
             }
 
-            // Check if the project already exists
             const projects = dbService.getProjects();
             if (projects.includes(projectName)) {
               await context.reply(
@@ -348,7 +306,6 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
               return;
             }
 
-            // Используем addProject вместо createProject
             dbService.addProject(projectName);
 
             await context.reply(
@@ -367,8 +324,12 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
         });
       }
     } catch (error) {
-      console.log("Ошибка при создании проекта:", error);
-      await safeAnswerCbQuery(ctx, "Ошибка при создании проекта");
+      await handleError(
+        ctx,
+        "Ошибка при создании проекта:",
+        error,
+        "Ошибка при создании проекта"
+      );
     }
   });
 
@@ -379,9 +340,7 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
     const project = ctx.match[1];
 
     try {
-      console.log(
-        `Навигация: Пользователь открыл список задач проекта "${project}"`
-      );
+      logAction("Навигация: Пользователь открыл список задач проекта", project);
 
       const tasks = dbService.getTasksByFilter({ project });
       const activeTasks = tasks.filter(
@@ -405,16 +364,18 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
         ...getKeyboardByScreenState(
           activeTasks,
           SCREEN_STATE.FILTERED_BY_PROJECT,
-          {
-            project,
-          }
+          { project }
         ),
       });
 
       await safeAnswerCbQuery(ctx, `Задачи проекта "${project}"`);
     } catch (error: any) {
-      console.log("Ошибка при показе задач проекта:", error.message);
-      await safeAnswerCbQuery(ctx, "Ошибка при получении задач");
+      await handleError(
+        ctx,
+        "Ошибка при показе задач проекта:",
+        error,
+        "Ошибка при получении задач"
+      );
     }
   });
 }

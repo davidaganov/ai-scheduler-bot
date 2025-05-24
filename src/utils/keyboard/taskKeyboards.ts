@@ -1,5 +1,10 @@
 import { Markup } from "telegraf";
-import { TASK_STATUS, TASK_ACTION, GLOBAL_ACTION } from "../../types";
+import {
+  TASK_STATUS,
+  TASK_ACTION,
+  GLOBAL_ACTION,
+  NAVIGATION_TITLE,
+} from "../../types";
 
 /**
  * Creates keyboard with action buttons for a single task
@@ -48,9 +53,16 @@ export function createTaskListKeyboard(tasks: any[]) {
   }
 
   // Add buttons at the bottom
-  rows.push([Markup.button.callback("📊 Статусы", "show_statuses_screen")]);
-
-  rows.push([Markup.button.callback("📁 Проекты", "show_project_filter")]);
+  rows.push([
+    Markup.button.callback(
+      NAVIGATION_TITLE.STATUS_FILTER,
+      "show_statuses_screen"
+    ),
+    Markup.button.callback(
+      NAVIGATION_TITLE.PROJECT_FILTER,
+      "show_project_filter"
+    ),
+  ]);
 
   return Markup.inlineKeyboard(rows);
 }
@@ -74,8 +86,8 @@ export function createFilteredByStatusKeyboard(tasks: any[]) {
 
   // For status-filtered screen, only back/all tasks buttons
   rows.push([
-    Markup.button.callback("🔍 Все задачи", "show_task_list"),
-    Markup.button.callback("◀️ Назад", "show_task_list"),
+    Markup.button.callback(NAVIGATION_TITLE.TASK_LIST, "show_task_list"),
+    Markup.button.callback(NAVIGATION_TITLE.BACK, "show_task_list"),
   ]);
 
   return Markup.inlineKeyboard(rows);
@@ -100,8 +112,11 @@ export function createFilteredByProjectKeyboard(tasks: any[]) {
 
   // For project-filtered screen, show "All tasks" and "Back" buttons
   rows.push([
-    Markup.button.callback("📁 Все проекты", "show_project_filter"),
-    Markup.button.callback("◀️ Назад", "show_task_list"),
+    Markup.button.callback(
+      NAVIGATION_TITLE.ALL_PROJECTS,
+      "show_project_filter"
+    ),
+    Markup.button.callback(NAVIGATION_TITLE.BACK, "show_task_list"),
   ]);
 
   return Markup.inlineKeyboard(rows);

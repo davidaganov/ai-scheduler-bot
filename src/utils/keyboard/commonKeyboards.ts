@@ -1,5 +1,11 @@
 import { Markup } from "telegraf";
-import { GLOBAL_ACTION, TASK_STATUS } from "../../types";
+import {
+  GLOBAL_ACTION,
+  NAVIGATION_TITLE,
+  TASK_STATUS,
+  TASK_STATUS_TITLE,
+  TASK_STATUS_EMOJI,
+} from "../../types";
 
 /**
  * Creates confirmation keyboard for actions
@@ -24,18 +30,23 @@ export function createStatusButtonsKeyboard() {
   return Markup.inlineKeyboard([
     [
       Markup.button.callback(
-        "🆕 Не начато",
+        `${TASK_STATUS_EMOJI.NOT_STARTED} ${TASK_STATUS_TITLE.NOT_STARTED}`,
         `filter_status:${TASK_STATUS.NOT_STARTED}`
       ),
     ],
     [
       Markup.button.callback(
-        "🚧 В работе",
+        `${TASK_STATUS_EMOJI.IN_PROGRESS} ${TASK_STATUS_TITLE.IN_PROGRESS}`,
         `filter_status:${TASK_STATUS.IN_PROGRESS}`
       ),
     ],
-    [Markup.button.callback("✅ Сделано", `filter_status:${TASK_STATUS.DONE}`)],
-    [Markup.button.callback("🔍 Все задачи", `filter_status:all`)],
-    [Markup.button.callback("◀️ Назад", "show_task_list")],
+    [
+      Markup.button.callback(
+        `${TASK_STATUS_EMOJI.DONE} ${TASK_STATUS_TITLE.DONE}`,
+        `filter_status:${TASK_STATUS.DONE}`
+      ),
+    ],
+    [Markup.button.callback(NAVIGATION_TITLE.TASK_LIST, `filter_status:all`)],
+    [Markup.button.callback(NAVIGATION_TITLE.BACK, "show_task_list")],
   ]);
 }

@@ -6,7 +6,12 @@ import {
   createTaskListHeader,
   getKeyboardByScreenState,
 } from "../../utils";
-import { TASK_STATUS, TASK_STATUS_EMOJI, SCREEN_STATE } from "../../types";
+import {
+  TASK_STATUS,
+  TASK_STATUS_EMOJI,
+  SCREEN_STATE,
+  NAVIGATION_ACTION,
+} from "../../types";
 import { safeAnswerCbQuery } from "./utils";
 
 /**
@@ -17,7 +22,7 @@ export function setupFilterCallbacks(bot: Telegraf<Context<Update>>) {
   /**
    * Show the status filter
    */
-  bot.action("show_status_filter", async (ctx) => {
+  bot.action(NAVIGATION_ACTION.SHOW_STATUS_FILTER, async (ctx) => {
     try {
       console.log(`Навигация: Пользователь открыл фильтр по статусу`);
 
@@ -56,7 +61,7 @@ export function setupFilterCallbacks(bot: Telegraf<Context<Update>>) {
   /**
    * Show the project filter
    */
-  bot.action("show_project_filter", async (ctx) => {
+  bot.action(NAVIGATION_ACTION.SHOW_PROJECT_FILTER, async (ctx) => {
     const projects = dbService.getProjects();
 
     if (projects.length === 0) {
@@ -239,7 +244,7 @@ export function setupFilterCallbacks(bot: Telegraf<Context<Update>>) {
   /**
    * Show the task list (return from filters)
    */
-  bot.action("show_task_list", async (ctx) => {
+  bot.action(NAVIGATION_ACTION.SHOW_TASK_LIST, async (ctx) => {
     try {
       console.log(`Навигация: Пользователь вернулся к списку задач`);
 
@@ -266,7 +271,7 @@ export function setupFilterCallbacks(bot: Telegraf<Context<Update>>) {
   /**
    * Show the status screen
    */
-  bot.action("show_statuses_screen", async (ctx) => {
+  bot.action(NAVIGATION_ACTION.SHOW_STATUSES_SCREEN, async (ctx) => {
     try {
       console.log(`Навигация: Пользователь открыл экран статусов`);
 

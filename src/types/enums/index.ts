@@ -7,3 +7,5 @@ export * from "./tasksFilter";
 export * from "./globalAction";
 export * from "./projectAction";
 export * from "./screenState";
+export * from "./navigationAction";
+export * from "./navigationTitle";

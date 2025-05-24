@@ -1,5 +1,5 @@
 import { Markup } from "telegraf";
-import { GLOBAL_ACTION, PROJECT_ACTION } from "../../types";
+import { GLOBAL_ACTION, NAVIGATION_TITLE, PROJECT_ACTION } from "../../types";
 
 /**
  * Creates keyboard for project selection when creating new task
@@ -40,10 +40,12 @@ export function createProjectFilterKeyboard(projects: string[]) {
   }
 
   // Add "All projects" button
-  rows.push([Markup.button.callback("🔍 Все задачи", "show_task_list")]);
+  rows.push([
+    Markup.button.callback(NAVIGATION_TITLE.TASK_LIST, "show_task_list"),
+  ]);
 
   // "Назад" button only on filter screen
-  rows.push([Markup.button.callback("◀️ Назад", "show_task_list")]);
+  rows.push([Markup.button.callback(NAVIGATION_TITLE.BACK, "show_task_list")]);
 
   return Markup.inlineKeyboard(rows);
 }

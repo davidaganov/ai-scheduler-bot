@@ -6,7 +6,7 @@ import {
   formatTaskList,
   createTaskListHeader,
 } from "../../utils";
-import { SCREEN_STATE, TASK_STATUS } from "../../types";
+import { SCREEN_STATE, TASK_STATUS, NAVIGATION_ACTION } from "../../types";
 import { safeAnswerCbQuery } from "./utils";
 
 /**
@@ -17,7 +17,7 @@ export function setupNavigationCallbacks(bot: Telegraf<Context<Update>>) {
   /**
    * Main menu with a list of tasks
    */
-  bot.action("show_main_menu", async (ctx) => {
+  bot.action(NAVIGATION_ACTION.SHOW_MAIN_MENU, async (ctx) => {
     try {
       console.log(`Навигация: Пользователь открыл главное меню`);
 
@@ -54,7 +54,7 @@ export function setupNavigationCallbacks(bot: Telegraf<Context<Update>>) {
   /**
    * Project management section
    */
-  bot.action("show_projects", async (ctx) => {
+  bot.action(NAVIGATION_ACTION.SHOW_PROJECTS, async (ctx) => {
     try {
       console.log(`Навигация: Пользователь открыл раздел проектов`);
 
@@ -97,7 +97,7 @@ export function setupNavigationCallbacks(bot: Telegraf<Context<Update>>) {
   /**
    * Information about the bot
    */
-  bot.action("show_help", async (ctx) => {
+  bot.action(NAVIGATION_ACTION.SHOW_HELP, async (ctx) => {
     try {
       console.log(`Навигация: Пользователь открыл справку`);
 
