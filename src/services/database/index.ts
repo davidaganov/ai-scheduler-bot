@@ -14,33 +14,36 @@ class DatabaseService extends TaskQueries {
   }
 
   // Delegation of methods from ProjectQueries
-  public getProjects(): string[] {
-    return this.projectQueries.getProjects();
+  public getProjects(userId: number): string[] {
+    return this.projectQueries.getProjects(userId);
   }
 
-  public addProject(projectName: string): boolean {
-    return this.projectQueries.addProject(projectName);
+  public addProject(projectName: string, userId: number): boolean {
+    return this.projectQueries.addProject(projectName, userId);
   }
 
-  public clearProject(projectName: string): boolean {
-    return this.projectQueries.clearProject(projectName);
+  public clearProject(projectName: string, userId: number): boolean {
+    return this.projectQueries.clearProject(projectName, userId);
   }
 
-  public deleteProject(projectName: string): boolean {
-    return this.projectQueries.deleteProject(projectName);
+  public deleteProject(projectName: string, userId: number): boolean {
+    return this.projectQueries.deleteProject(projectName, userId);
   }
 
-  public getProjectStats(projectName: string): {
+  public getProjectStats(
+    projectName: string,
+    userId: number
+  ): {
     total: number;
     notStarted: number;
     inProgress: number;
     done: number;
   } {
-    return this.projectQueries.getProjectStats(projectName);
+    return this.projectQueries.getProjectStats(projectName, userId);
   }
 
-  public projectExists(projectName: string): boolean {
-    return this.projectQueries.projectExists(projectName);
+  public projectExists(projectName: string, userId: number): boolean {
+    return this.projectQueries.projectExists(projectName, userId);
   }
 }
 

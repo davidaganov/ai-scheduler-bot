@@ -19,9 +19,12 @@ export function setupNavigationCallbacks(bot: Telegraf<Context<Update>>) {
    */
   bot.action(NAVIGATION_ACTION.SHOW_MAIN_MENU, async (ctx) => {
     try {
+      if (!ctx.from) return;
+      const userId = ctx.from.id;
+
       console.log(`Навигация: Пользователь открыл главное меню`);
 
-      const tasks = dbService.getAllTasks();
+      const tasks = dbService.getAllTasks(userId);
       const filteredTasks = tasks.filter(
         (task) => task.status !== TASK_STATUS.DONE
       );
@@ -56,9 +59,12 @@ export function setupNavigationCallbacks(bot: Telegraf<Context<Update>>) {
    */
   bot.action(NAVIGATION_ACTION.SHOW_PROJECTS, async (ctx) => {
     try {
+      if (!ctx.from) return;
+      const userId = ctx.from.id;
+
       console.log(`Навигация: Пользователь открыл раздел проектов`);
 
-      const projects = dbService.getProjects();
+      const projects = dbService.getProjects(userId);
 
       if (projects.length === 0) {
         await ctx.editMessageText(
@@ -75,7 +81,7 @@ export function setupNavigationCallbacks(bot: Telegraf<Context<Update>>) {
       let projectsInfo = "📁 Управление проектами:\n\n";
 
       projects.forEach((project) => {
-        const stats = dbService.getProjectStats(project);
+        const stats = dbService.getProjectStats(project, userId);
         projectsInfo += `📂 <b>${project}</b>\n`;
         projectsInfo += `   📊 Всего: ${stats.total} | ⏳ ${stats.notStarted} | 🚧 ${stats.inProgress} | ✅ ${stats.done}\n\n`;
       });

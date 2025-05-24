@@ -15,12 +15,15 @@ import { SCREEN_STATE, TASK_STATUS } from "../../types";
 export function setupListCommand(bot: Telegraf<Context<Update>>) {
   bot.command("list", async (ctx) => {
     try {
-      const tasks = dbService.getAllTasks();
+      if (!ctx.from) return;
+      const userId = ctx.from.id;
+
+      const tasks = dbService.getAllTasks(userId);
 
       if (tasks.length === 0) {
         await ctx.reply(
           "📋 Список задач пуст\n\nСоздайте новую задачу, отправив мне сообщение с её описанием.",
-          getKeyboardByScreenState([], SCREEN_STATE.MAIN_LIST)
+          getKeyboardByScreenState([], SCREEN_STATE.MAIN_LIST, {})
         );
         return;
       }
@@ -36,7 +39,7 @@ export function setupListCommand(bot: Telegraf<Context<Update>>) {
 
       await ctx.replyWithHTML(
         taskListText,
-        getKeyboardByScreenState(filteredTasks, SCREEN_STATE.MAIN_LIST)
+        getKeyboardByScreenState(filteredTasks, SCREEN_STATE.MAIN_LIST, {})
       );
     } catch (error) {
       console.log("Ошибка при обработке команды /list:", error);

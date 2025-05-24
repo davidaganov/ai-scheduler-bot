@@ -12,8 +12,14 @@ export default class TasksBatchManager extends EventEmitter {
    * @param chatId - Chat ID
    * @param text - Text of the message
    * @param originalMessage - Original message object
+   * @param userId - User ID
    */
-  addMessageToBatch(chatId: number, text: string, originalMessage: any): void {
+  addMessageToBatch(
+    chatId: number,
+    text: string,
+    originalMessage: any,
+    userId?: number
+  ): void {
     const now = new Date();
 
     let batch = this.pendingTasksBatches.get(chatId);
@@ -23,8 +29,11 @@ export default class TasksBatchManager extends EventEmitter {
         messages: [],
         chatId,
         lastMessageTime: now,
+        userId,
       };
       this.pendingTasksBatches.set(chatId, batch);
+    } else if (userId && !batch.userId) {
+      batch.userId = userId;
     }
 
     // Add new message
@@ -111,7 +120,7 @@ export default class TasksBatchManager extends EventEmitter {
 
     // Emit event for message processing
     // This will be handled in handlers/messages.ts
-    this.emit("process_messages", chatId);
+    this.emit("process_messages", chatId, batch.userId);
   }
 
   /**

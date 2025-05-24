@@ -17,6 +17,8 @@ export function setupStartCommand(bot: Telegraf<Context<Update>>) {
     try {
       const chatId = ctx.chat.id;
       const firstName = ctx.from?.first_name || "пользователь";
+      if (!ctx.from) return;
+      const userId = ctx.from.id;
 
       console.log(`Пользователь ${firstName} (${chatId}) запустил бота`);
 
@@ -37,7 +39,7 @@ export function setupStartCommand(bot: Telegraf<Context<Update>>) {
 `;
 
       // Get the list of tasks for the user (if any)
-      const tasks = dbService.getAllTasks();
+      const tasks = dbService.getAllTasks(userId);
       const filteredTasks = tasks.filter(
         (task) => task.status !== TASK_STATUS.DONE
       );
@@ -46,7 +48,7 @@ export function setupStartCommand(bot: Telegraf<Context<Update>>) {
       if (tasks.length === 0) {
         await ctx.replyWithHTML(
           welcomeMessage,
-          getKeyboardByScreenState([], SCREEN_STATE.MAIN_LIST)
+          getKeyboardByScreenState([], SCREEN_STATE.MAIN_LIST, {})
         );
         return;
       }
@@ -54,17 +56,19 @@ export function setupStartCommand(bot: Telegraf<Context<Update>>) {
       // Send the welcome message
       await ctx.replyWithHTML(welcomeMessage);
 
-      // Send the list of existing tasks
+      // Send the list of tasks
       const taskListText =
-        createTaskListHeader() + "\n\n" + formatTaskList(tasks, false);
+        createTaskListHeader() + "\n\n" + formatTaskList(filteredTasks, false);
 
       await ctx.replyWithHTML(
         taskListText,
-        getKeyboardByScreenState(filteredTasks, SCREEN_STATE.MAIN_LIST)
+        getKeyboardByScreenState(filteredTasks, SCREEN_STATE.MAIN_LIST, {})
       );
     } catch (error) {
       console.log("Ошибка при обработке команды /start:", error);
-      await ctx.reply("Произошла ошибка при запуске бота. Попробуйте позже.");
+      await ctx.reply(
+        "Произошла ошибка при запуске бота. Попробуйте еще раз с помощью команды /start."
+      );
     }
   });
 }

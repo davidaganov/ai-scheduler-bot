@@ -23,10 +23,13 @@ export function setupFilterCallbacks(bot: Telegraf<Context<Update>>) {
    * Show the status filter
    */
   bot.action(NAVIGATION_ACTION.SHOW_STATUS_FILTER, async (ctx) => {
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
+
     try {
       console.log(`Навигация: Пользователь открыл фильтр по статусу`);
 
-      const tasks = dbService.getAllTasks();
+      const tasks = dbService.getAllTasks(userId);
 
       // Get statistics by status
       const notStarted = tasks.filter(
@@ -62,24 +65,45 @@ export function setupFilterCallbacks(bot: Telegraf<Context<Update>>) {
    * Show the project filter
    */
   bot.action(NAVIGATION_ACTION.SHOW_PROJECT_FILTER, async (ctx) => {
-    const projects = dbService.getProjects();
-
-    if (projects.length === 0) {
-      await safeAnswerCbQuery(ctx, "⚠️ Нет доступных проектов");
-      return;
-    }
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
 
     try {
       console.log(`Навигация: Пользователь открыл фильтр по проектам`);
 
-      await ctx.editMessageReplyMarkup(
-        getKeyboardByScreenState([], SCREEN_STATE.PROJECT_SELECTION, {
+      const projects = dbService.getProjects(userId);
+
+      if (projects.length === 0) {
+        await ctx.editMessageText(
+          "📁 У вас пока нет проектов.\n\nСначала создайте проект в разделе 'Управление проектами'.",
+          getKeyboardByScreenState([], SCREEN_STATE.MAIN_LIST)
+        );
+        await safeAnswerCbQuery(ctx, "Проектов нет");
+        return;
+      }
+
+      // Get the count of tasks for each project
+      let projectList = `📋 Список задач • Проекты\n\n`;
+
+      for (const project of projects) {
+        const stats = dbService.getProjectStats(project, userId);
+        projectList += `📁 <b>${project}</b>\n`;
+        projectList += `   • Всего задач: ${stats.total}\n`;
+        projectList += `   • Активных: ${
+          stats.notStarted + stats.inProgress
+        }\n\n`;
+      }
+
+      await ctx.editMessageText(projectList, {
+        parse_mode: "HTML",
+        ...getKeyboardByScreenState([], SCREEN_STATE.PROJECT_SELECTION, {
           projects,
-        }).reply_markup
-      );
-      await safeAnswerCbQuery(ctx, "Выберите проект");
+        }),
+      });
+
+      await safeAnswerCbQuery(ctx, "Список проектов");
     } catch (error) {
-      console.log("Ошибка при изменении клавиатуры:", error);
+      console.log("Ошибка при показе проектов:", error);
       await safeAnswerCbQuery(ctx, "Попробуйте еще раз");
     }
   });
@@ -89,6 +113,8 @@ export function setupFilterCallbacks(bot: Telegraf<Context<Update>>) {
    */
   bot.action(/^filter_status:(.+)$/, async (ctx) => {
     const status: TASK_STATUS = ctx.match[1] as TASK_STATUS;
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
 
     try {
       console.log(
@@ -100,15 +126,15 @@ export function setupFilterCallbacks(bot: Telegraf<Context<Update>>) {
       let showCompleted = false;
 
       if (status === TASK_STATUS.ALL) {
-        tasks = dbService.getAllTasks();
+        tasks = dbService.getAllTasks(userId);
         header = createTaskListHeader();
         showCompleted = false; // In the general list, we always hide completed
       } else if (status === TASK_STATUS.DONE) {
-        tasks = dbService.getTasksByFilter({ status });
+        tasks = dbService.getTasksByFilter({ status, user_id: userId });
         header = createTaskListHeader({ status });
         showCompleted = true; // Show only completed
       } else {
-        tasks = dbService.getTasksByFilter({ status });
+        tasks = dbService.getTasksByFilter({ status, user_id: userId });
         header = createTaskListHeader({ status });
         showCompleted = false;
       }
@@ -122,7 +148,7 @@ export function setupFilterCallbacks(bot: Telegraf<Context<Update>>) {
 
         // If this is the same filter, reset it (show active tasks)
         if (currentText === newText && status !== "all") {
-          const allTasks = dbService.getAllTasks();
+          const allTasks = dbService.getAllTasks(userId);
           const allTasksText =
             createTaskListHeader() + "\n\n" + formatTaskList(allTasks, false);
 
@@ -174,67 +200,41 @@ export function setupFilterCallbacks(bot: Telegraf<Context<Update>>) {
    */
   bot.action(/^filter_project:(.+)$/, async (ctx) => {
     const project = ctx.match[1];
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
 
     try {
       console.log(
         `Навигация: Пользователь выбрал фильтр по проекту "${project}"`
       );
 
-      let tasks;
-      let header;
-
-      if (project === "all") {
-        tasks = dbService.getAllTasks();
-        header = createTaskListHeader();
-      } else {
-        tasks = dbService.getTasksByFilter({ project });
-        header = createTaskListHeader({ project });
-      }
-
-      const newText = header + "\n\n" + formatTaskList(tasks, false); // Always hide completed
-
-      // Check if the new text differs from the current one
-      const currentMessage = ctx.callbackQuery?.message;
-      if (currentMessage && "text" in currentMessage) {
-        const currentText = currentMessage.text;
-
-        // If this is the same filter, reset it (show active tasks)
-        if (currentText === newText && project !== "all") {
-          const allTasks = dbService.getAllTasks();
-          const allTasksText =
-            createTaskListHeader() + "\n\n" + formatTaskList(allTasks, false);
-
-          await ctx.editMessageText(allTasksText, {
-            parse_mode: "HTML",
-            ...getKeyboardByScreenState(allTasks, SCREEN_STATE.MAIN_LIST),
-          });
-          await safeAnswerCbQuery(ctx, "Фильтр сброшен");
-          return;
-        }
-
-        // If the text has not changed
-        if (currentText === newText) {
-          await safeAnswerCbQuery(ctx, "Фильтр уже применен");
-          return;
-        }
-      }
-
-      const filteredTasksForKeyboard = tasks.filter(
+      const tasks = dbService.getTasksByFilter({ project, user_id: userId });
+      const activeTasks = tasks.filter(
         (task) => task.status !== TASK_STATUS.DONE
       );
 
-      await ctx.editMessageText(newText, {
+      if (tasks.length === 0) {
+        await ctx.editMessageText(
+          `📁 Проект "${project}"\n\nВ этом проекте пока нет задач.`,
+          getKeyboardByScreenState([], SCREEN_STATE.PROJECT_SELECTION, {})
+        );
+        await safeAnswerCbQuery(ctx, "Проект пуст");
+        return;
+      }
+
+      const header = createTaskListHeader({ project });
+      const taskListText = header + "\n\n" + formatTaskList(tasks, false);
+
+      await ctx.editMessageText(taskListText, {
         parse_mode: "HTML",
         ...getKeyboardByScreenState(
-          filteredTasksForKeyboard,
-          SCREEN_STATE.FILTERED_BY_PROJECT
+          activeTasks,
+          SCREEN_STATE.FILTERED_BY_PROJECT,
+          { project }
         ),
       });
 
-      await safeAnswerCbQuery(
-        ctx,
-        `Показан проект: ${project === "all" ? "все" : project}`
-      );
+      await safeAnswerCbQuery(ctx, `Задачи проекта "${project}"`);
     } catch (error: any) {
       console.log("Ошибка при фильтрации по проекту:", error.message);
       await safeAnswerCbQuery(ctx, "Ошибка при фильтрации");
@@ -242,29 +242,41 @@ export function setupFilterCallbacks(bot: Telegraf<Context<Update>>) {
   });
 
   /**
-   * Show the task list (return from filters)
+   * Show all tasks
    */
   bot.action(NAVIGATION_ACTION.SHOW_TASK_LIST, async (ctx) => {
-    try {
-      console.log(`Навигация: Пользователь вернулся к списку задач`);
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
 
-      const tasks = dbService.getAllTasks();
-      const filteredTasks = tasks.filter(
+    try {
+      console.log(`Навигация: Пользователь запросил все задачи`);
+
+      const tasks = dbService.getAllTasks(userId);
+      const activeTasks = tasks.filter(
         (task) => task.status !== TASK_STATUS.DONE
       );
 
-      const text =
-        createTaskListHeader() + "\n\n" + formatTaskList(tasks, false);
+      if (activeTasks.length === 0) {
+        await ctx.editMessageText(
+          "📋 Список задач пуст\n\nУ вас нет активных задач.\nСоздайте новую задачу, отправив сообщение.",
+          getKeyboardByScreenState([], SCREEN_STATE.MAIN_LIST, {})
+        );
+        await safeAnswerCbQuery(ctx, "Нет активных задач");
+        return;
+      }
 
-      await ctx.editMessageText(text, {
+      const header = createTaskListHeader();
+      const tasksText = header + "\n\n" + formatTaskList(activeTasks, false);
+
+      await ctx.editMessageText(tasksText, {
         parse_mode: "HTML",
-        ...getKeyboardByScreenState(filteredTasks, SCREEN_STATE.MAIN_LIST),
+        ...getKeyboardByScreenState(activeTasks, SCREEN_STATE.MAIN_LIST, {}),
       });
 
-      await safeAnswerCbQuery(ctx, "Список задач");
-    } catch (error) {
-      console.log("Ошибка при возврате к списку задач:", error);
-      await safeAnswerCbQuery(ctx, "Попробуйте еще раз");
+      await safeAnswerCbQuery(ctx, "Все активные задачи");
+    } catch (error: any) {
+      console.log("Ошибка при отображении всех задач:", error.message);
+      await safeAnswerCbQuery(ctx, "Ошибка при загрузке задач");
     }
   });
 
@@ -272,10 +284,13 @@ export function setupFilterCallbacks(bot: Telegraf<Context<Update>>) {
    * Show the status screen
    */
   bot.action(NAVIGATION_ACTION.SHOW_STATUSES_SCREEN, async (ctx) => {
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
+
     try {
       console.log(`Навигация: Пользователь открыл экран статусов`);
 
-      const tasks = dbService.getAllTasks();
+      const tasks = dbService.getAllTasks(userId);
 
       const notStarted = tasks.filter(
         (task) => task.status === TASK_STATUS.NOT_STARTED
@@ -296,7 +311,7 @@ export function setupFilterCallbacks(bot: Telegraf<Context<Update>>) {
 
       await ctx.editMessageText(text, {
         parse_mode: "HTML",
-        ...getKeyboardByScreenState(tasks, SCREEN_STATE.STATUS_SELECTION),
+        ...getKeyboardByScreenState(tasks, SCREEN_STATE.STATUS_SELECTION, {}),
       });
 
       await safeAnswerCbQuery(ctx, "Статусы задач");

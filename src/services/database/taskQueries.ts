@@ -12,15 +12,16 @@ class TaskQueries extends DatabaseService {
    */
   public addTask(task: Omit<Task, "id">): number {
     const stmt = this.db.prepare(`
-      INSERT INTO tasks (description, project, status, created_at)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO tasks (description, project, status, created_at, user_id)
+      VALUES (?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
       task.description,
       task.project,
       task.status,
-      task.created_at
+      task.created_at,
+      task.user_id
     );
 
     return result.lastInsertRowid as number;
@@ -29,12 +30,13 @@ class TaskQueries extends DatabaseService {
   /**
    * Get a task by its ID
    * @param id - Task ID
+   * @param userId - User ID
    * @returns Task object or undefined if not found
    */
-  public getTaskById(id: number): Task | undefined {
-    const task = this.db.prepare(`SELECT * FROM tasks WHERE id = ?`).get(id) as
-      | any
-      | undefined;
+  public getTaskById(id: number, userId: number): Task | undefined {
+    const task = this.db
+      .prepare(`SELECT * FROM tasks WHERE id = ? AND user_id = ?`)
+      .get(id, userId) as any | undefined;
 
     if (!task) return undefined;
 
@@ -42,28 +44,30 @@ class TaskQueries extends DatabaseService {
   }
 
   /**
-   * Get all tasks ordered by ID (newest first)
+   * Get all tasks ordered by ID (newest first) for a specific user
+   * @param userId - User ID
    * @returns Array of all tasks
    */
-  public getAllTasks(): Task[] {
+  public getAllTasks(userId: number): Task[] {
     const tasks = this.db
-      .prepare(`SELECT * FROM tasks ORDER BY id DESC`)
-      .all() as any[];
+      .prepare(`SELECT * FROM tasks WHERE user_id = ? ORDER BY id DESC`)
+      .all(userId) as any[];
 
     return tasks.map((task) => task as Task);
   }
 
   /**
-   * Get tasks filtered by status and/or project
+   * Get tasks filtered by status and/or project for a specific user
    * @param filter - Filter criteria
    * @returns Array of filtered tasks
    */
   public getTasksByFilter(filter: {
     status?: string;
     project?: string;
+    user_id: number;
   }): Task[] {
-    let query = `SELECT * FROM tasks WHERE 1=1`;
-    const params: any[] = [];
+    let query = `SELECT * FROM tasks WHERE user_id = ?`;
+    const params: any[] = [filter.user_id];
 
     if (filter.status) {
       query += ` AND status = ?`;
@@ -86,12 +90,17 @@ class TaskQueries extends DatabaseService {
    * Update task status
    * @param id - Task ID
    * @param status - New status
+   * @param userId - User ID
    * @returns True if task was updated, false otherwise
    */
-  public updateTaskStatus(id: number, status: TASK_STATUS): boolean {
+  public updateTaskStatus(
+    id: number,
+    status: TASK_STATUS,
+    userId: number
+  ): boolean {
     const result = this.db
-      .prepare(`UPDATE tasks SET status = ? WHERE id = ?`)
-      .run(status, id);
+      .prepare(`UPDATE tasks SET status = ? WHERE id = ? AND user_id = ?`)
+      .run(status, id, userId);
 
     return result.changes > 0;
   }
@@ -99,10 +108,13 @@ class TaskQueries extends DatabaseService {
   /**
    * Delete a task by ID
    * @param id - Task ID
+   * @param userId - User ID
    * @returns True if task was deleted, false otherwise
    */
-  public deleteTask(id: number): boolean {
-    const result = this.db.prepare(`DELETE FROM tasks WHERE id = ?`).run(id);
+  public deleteTask(id: number, userId: number): boolean {
+    const result = this.db
+      .prepare(`DELETE FROM tasks WHERE id = ? AND user_id = ?`)
+      .run(id, userId);
 
     return result.changes > 0;
   }

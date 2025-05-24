@@ -36,7 +36,8 @@ class DatabaseService {
         description TEXT NOT NULL,
         project TEXT NOT NULL,
         status TEXT NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        user_id INTEGER NOT NULL DEFAULT 0
       )
     `
       )
@@ -48,8 +49,10 @@ class DatabaseService {
         `
       CREATE TABLE IF NOT EXISTS projects (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT UNIQUE NOT NULL,
-        created_at TEXT NOT NULL
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        user_id INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(name, user_id)
       )
     `
       )
@@ -68,6 +71,22 @@ class DatabaseService {
       .prepare(
         `
       CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project)
+    `
+      )
+      .run();
+
+    this.db
+      .prepare(
+        `
+      CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)
+    `
+      )
+      .run();
+
+    this.db
+      .prepare(
+        `
+      CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id)
     `
       )
       .run();

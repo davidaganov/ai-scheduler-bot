@@ -20,6 +20,9 @@ export async function createTaskFromMessage(
   project = "Основной"
 ) {
   try {
+    if (!ctx.from) throw new Error("Неизвестный пользователь");
+    const userId = ctx.from.id;
+
     // Analyze the message
     const taskInfo = await openaiService.extractTaskInfo(message);
 
@@ -29,9 +32,10 @@ export async function createTaskFromMessage(
       project,
       status: TASK_STATUS.NOT_STARTED,
       created_at: new Date().toISOString(),
+      user_id: userId,
     });
 
-    const task = dbService.getTaskById(taskId);
+    const task = dbService.getTaskById(taskId, userId);
 
     if (!task) {
       throw new Error("Не удалось создать задачу");
@@ -75,6 +79,8 @@ export async function createMultipleTasks(
   try {
     const chatId = ctx.chat?.id;
     if (!chatId) return;
+    if (!ctx.from) throw new Error("Неизвестный пользователь");
+    const userId = ctx.from.id;
 
     const createdTasks = [];
 
@@ -100,9 +106,10 @@ export async function createMultipleTasks(
         project,
         status: TASK_STATUS.NOT_STARTED,
         created_at: new Date().toISOString(),
+        user_id: userId,
       });
 
-      const task = dbService.getTaskById(taskId);
+      const task = dbService.getTaskById(taskId, userId);
       if (task) {
         createdTasks.push(task);
       }
@@ -129,7 +136,7 @@ export async function createMultipleTasks(
     await ctx.replyWithHTML(fullMessage, {
       parse_mode: "HTML",
       link_preview_options: { is_disabled: true },
-      ...getKeyboardByScreenState([], SCREEN_STATE.MAIN_LIST),
+      ...getKeyboardByScreenState([], SCREEN_STATE.MAIN_LIST, {}),
     });
 
     // Clear session data
@@ -153,10 +160,12 @@ export async function createMultipleTasks(
  * Processes accumulated messages to create tasks
  * @param bot - Telegraf bot instance
  * @param chatId - Chat ID
+ * @param userId - User ID
  */
 export async function processAccumulatedMessages(
   bot: Telegraf<Context<Update>>,
-  chatId: number
+  chatId: number,
+  userId: number
 ) {
   try {
     const messages = sessionService.getAccumulatedMessages(chatId);
@@ -187,7 +196,7 @@ export async function processAccumulatedMessages(
     sessionService.setAnalyzedTasks(chatId, analyzedTasks);
 
     // Get available projects
-    const projects = dbService.getProjects();
+    const projects = dbService.getProjects(userId);
 
     // Update the status message
     await bot.telegram.editMessageText(
@@ -226,9 +235,10 @@ export async function processAccumulatedMessages(
 export function setupTaskMessages(bot: Telegraf<Context<Update>>) {
   // Processing the state of waiting for the project name
   bot.on("message", async (ctx, next) => {
-    if (!ctx.chat) return next();
+    if (!ctx.chat || !ctx.from) return next();
 
     const chatId = ctx.chat.id;
+    const userId = ctx.from.id;
     const state = sessionService.getUserState(chatId);
 
     // If we are waiting for the project name
@@ -239,7 +249,7 @@ export function setupTaskMessages(bot: Telegraf<Context<Update>>) {
       const projectName = message.text.trim();
 
       // Check if the project already exists
-      const exists = dbService.projectExists(projectName);
+      const exists = dbService.projectExists(projectName, userId);
 
       if (exists) {
         await ctx.reply(`⚠️ Проект "${projectName}" уже существует.`);
@@ -248,7 +258,7 @@ export function setupTaskMessages(bot: Telegraf<Context<Update>>) {
       }
 
       // Create a new project
-      const success = dbService.addProject(projectName);
+      const success = dbService.addProject(projectName, userId);
 
       if (!success) {
         await ctx.reply(
@@ -278,16 +288,16 @@ export function setupTaskMessages(bot: Telegraf<Context<Update>>) {
 
   // Processing ordinary text messages for creating tasks
   bot.on("text", async (ctx, next) => {
-    if (!ctx.chat) return next();
+    if (!ctx.chat || !ctx.from) return next();
 
     const chatId = ctx.chat.id;
+    const userId = ctx.from.id;
     const state = sessionService.getUserState(chatId);
-    const userId = ctx.from?.id;
     const message = ctx.message;
     const text = message.text;
 
     // Check if there is a one-time handler for this user
-    if (userId && sessionService.handleNextTextMessage(userId, ctx, text)) {
+    if (sessionService.handleNextTextMessage(userId, ctx, text)) {
       // If the handler is found and executed, break the middleware chain
       return;
     }
@@ -299,18 +309,24 @@ export function setupTaskMessages(bot: Telegraf<Context<Update>>) {
     if (text.startsWith("/")) return next();
 
     // Add the message to the accumulated buffer
-    sessionService.addMessageToBatch(chatId, text, message);
+    sessionService.addMessageToBatch(chatId, text, message, userId);
 
     return next();
   });
 
   // Processing forwarded messages
   bot.on("message", async (ctx, next) => {
-    if (!ctx.chat || !ctx.message || !("forward_date" in ctx.message)) {
+    if (
+      !ctx.chat ||
+      !ctx.message ||
+      !("forward_date" in ctx.message) ||
+      !ctx.from
+    ) {
       return next();
     }
 
     const chatId = ctx.chat.id;
+    const userId = ctx.from.id;
     const state = sessionService.getUserState(chatId);
 
     // Skip if the user is in another state
@@ -330,14 +346,18 @@ export function setupTaskMessages(bot: Telegraf<Context<Update>>) {
     }
 
     // Add to the buffer
-    sessionService.addMessageToBatch(chatId, text, message);
+    sessionService.addMessageToBatch(chatId, text, message, userId);
 
     return next();
   });
 
   // Event handler for accumulating messages
-  sessionService.on("process_messages", (chatId) => {
-    processAccumulatedMessages(bot, chatId);
+  sessionService.on("process_messages", (chatId, userId) => {
+    if (userId) {
+      processAccumulatedMessages(bot, chatId, userId);
+    } else {
+      console.error("Ошибка: userId не передан в обработчик process_messages");
+    }
   });
 
   console.log("✅ Обработчики сообщений для задач настроены");

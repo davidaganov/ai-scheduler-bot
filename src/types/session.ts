@@ -17,6 +17,7 @@ export interface PendingTasksBatch {
   lastMessageTime: Date;
   timeoutId?: NodeJS.Timeout;
   statusMessageId?: number;
+  userId?: number;
 }
 
 /**

@@ -19,7 +19,9 @@ export function setupTaskCallbacks(bot: Telegraf<Context<Update>>) {
    */
   bot.action(/^start_task:(\d+)$/, async (ctx) => {
     const taskId = parseInt(ctx.match[1]);
-    const task = dbService.getTaskById(taskId);
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
+    const task = dbService.getTaskById(taskId, userId);
 
     if (!task) {
       await safeAnswerCbQuery(ctx, "⚠️ Задача не найдена");
@@ -34,7 +36,7 @@ export function setupTaskCallbacks(bot: Telegraf<Context<Update>>) {
     try {
       console.log(`Действие: Пользователь запустил задачу #${taskId} в работу`);
 
-      if (dbService.updateTaskStatus(taskId, TASK_STATUS.IN_PROGRESS)) {
+      if (dbService.updateTaskStatus(taskId, TASK_STATUS.IN_PROGRESS, userId)) {
         task.status = TASK_STATUS.IN_PROGRESS;
         await ctx.editMessageText(formatTask(task), {
           parse_mode: "HTML",
@@ -63,7 +65,9 @@ export function setupTaskCallbacks(bot: Telegraf<Context<Update>>) {
    */
   bot.action(/^done_task:(\d+)$/, async (ctx) => {
     const taskId = parseInt(ctx.match[1]);
-    const task = dbService.getTaskById(taskId);
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
+    const task = dbService.getTaskById(taskId, userId);
 
     if (!task) {
       await safeAnswerCbQuery(ctx, "⚠️ Задача не найдена");
@@ -80,7 +84,7 @@ export function setupTaskCallbacks(bot: Telegraf<Context<Update>>) {
         `Действие: Пользователь пометил задачу #${taskId} как выполненную`
       );
 
-      if (dbService.updateTaskStatus(taskId, TASK_STATUS.DONE)) {
+      if (dbService.updateTaskStatus(taskId, TASK_STATUS.DONE, userId)) {
         task.status = TASK_STATUS.DONE;
         await ctx.editMessageText(formatTask(task), {
           parse_mode: "HTML",
@@ -109,7 +113,9 @@ export function setupTaskCallbacks(bot: Telegraf<Context<Update>>) {
    */
   bot.action(/^delete_task:(\d+)$/, async (ctx) => {
     const taskId = parseInt(ctx.match[1]);
-    const task = dbService.getTaskById(taskId);
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
+    const task = dbService.getTaskById(taskId, userId);
 
     if (!task) {
       await safeAnswerCbQuery(ctx, "⚠️ Задача не найдена");
@@ -136,13 +142,15 @@ export function setupTaskCallbacks(bot: Telegraf<Context<Update>>) {
    */
   bot.action(/^confirm_delete:(\d+)$/, async (ctx) => {
     const taskId = parseInt(ctx.match[1]);
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
 
     try {
       console.log(
         `Действие: Пользователь подтвердил удаление задачи #${taskId}`
       );
 
-      if (dbService.deleteTask(taskId)) {
+      if (dbService.deleteTask(taskId, userId)) {
         await ctx.editMessageText(`✅ Задача #${taskId} успешно удалена.`);
         await safeAnswerCbQuery(ctx, "Задача удалена");
       } else {
@@ -160,7 +168,9 @@ export function setupTaskCallbacks(bot: Telegraf<Context<Update>>) {
    */
   bot.action(/^cancel_delete:(\d+)$/, async (ctx) => {
     const taskId = parseInt(ctx.match[1]);
-    const task = dbService.getTaskById(taskId);
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
+    const task = dbService.getTaskById(taskId, userId);
 
     if (!task) {
       try {
@@ -197,7 +207,9 @@ export function setupTaskCallbacks(bot: Telegraf<Context<Update>>) {
    */
   bot.action(/^task_info:(\d+)$/, async (ctx) => {
     const taskId = parseInt(ctx.match[1]);
-    const task = dbService.getTaskById(taskId);
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
+    const task = dbService.getTaskById(taskId, userId);
 
     if (!task) {
       await safeAnswerCbQuery(ctx, "⚠️ Задача не найдена");

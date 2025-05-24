@@ -40,8 +40,8 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
     await safeAnswerCbQuery(ctx, callbackMsg);
   };
 
-  const renderProjectInfo = (project: string) => {
-    const stats = dbService.getProjectStats(project);
+  const renderProjectInfo = (project: string, userId: number) => {
+    const stats = dbService.getProjectStats(project, userId);
     return (
       `📁 Проект: <b>${project}</b>\n\n` +
       `📊 Статистика:\n` +
@@ -53,8 +53,8 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
     );
   };
 
-  const renderProjectsList = () => {
-    const projects = dbService.getProjects();
+  const renderProjectsList = (userId: number) => {
+    const projects = dbService.getProjects(userId);
 
     if (projects.length === 0) {
       return {
@@ -69,7 +69,7 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
 
     let projectsInfo = "📁 Управление проектами:\n\n";
     projects.forEach((project) => {
-      const stats = dbService.getProjectStats(project);
+      const stats = dbService.getProjectStats(project, userId);
       projectsInfo += `📂 <b>${project}</b>\n`;
       projectsInfo += `   📊 Всего: ${stats.total} | ⏳ ${stats.notStarted} | 🚧 ${stats.inProgress} | ✅ ${stats.done}\n\n`;
     });
@@ -87,11 +87,13 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
    */
   bot.action(/^manage_project:(.+)$/, async (ctx) => {
     const project = ctx.match[1];
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
 
     try {
       logAction("Навигация: Пользователь открыл управление проектом", project);
 
-      await ctx.editMessageText(renderProjectInfo(project), {
+      await ctx.editMessageText(renderProjectInfo(project, userId), {
         parse_mode: "HTML",
         ...createProjectActionsKeyboard(project),
       });
@@ -170,11 +172,13 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
    */
   bot.action(/^confirm_project_clear:(.+)$/, async (ctx) => {
     const project = ctx.match[1];
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
 
     try {
       logAction("Действие: Пользователь подтвердил очистку проекта", project);
 
-      const clearedCount = dbService.clearProject(project);
+      const clearedCount = dbService.clearProject(project, userId);
       await ctx.editMessageText(
         `✅ Проект "${project}" очищен.\nУдалено задач: ${clearedCount}`
       );
@@ -194,14 +198,16 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
    */
   bot.action(/^confirm_project_delete:(.+)$/, async (ctx) => {
     const project = ctx.match[1];
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
 
     try {
       logAction("Действие: Пользователь подтвердил удаление проекта", project);
 
-      const success = dbService.deleteProject(project);
+      const success = dbService.deleteProject(project, userId);
 
       if (success) {
-        const { text, keyboard } = renderProjectsList();
+        const { text, keyboard } = renderProjectsList(userId);
         await ctx.editMessageText(text, {
           parse_mode: "HTML",
           ...keyboard,
@@ -224,11 +230,13 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
   const setupCancelAction = (action: string) => {
     bot.action(new RegExp(`^cancel_project_${action}:(.+)$`), async (ctx) => {
       const project = ctx.match[1];
+      if (!ctx.from) return;
+      const userId = ctx.from.id;
 
       try {
         logAction(`Действие: Пользователь отменил ${action} проекта`, project);
 
-        await ctx.editMessageText(renderProjectInfo(project), {
+        await ctx.editMessageText(renderProjectInfo(project, userId), {
           parse_mode: "HTML",
           ...createProjectActionsKeyboard(project),
         });
@@ -256,10 +264,13 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
    * Return to the list of projects
    */
   bot.action(NAVIGATION_ACTION.BACK_TO_PROJECTS, async (ctx) => {
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
+
     try {
       logAction("Навигация: Пользователь вернулся к списку проектов");
 
-      const { text, keyboard } = renderProjectsList();
+      const { text, keyboard } = renderProjectsList(userId);
       await ctx.editMessageText(text, {
         parse_mode: "HTML",
         ...keyboard,
@@ -289,6 +300,9 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
         onNextTextMessage(userId, async (context: Context, text: string) => {
           try {
             const projectName = text.trim();
+            const userId = context.from?.id;
+            if (!userId) return;
+
             logAction("Действие: Пользователь создал проект", projectName);
 
             if (projectName.length === 0) {
@@ -298,7 +312,7 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
               return;
             }
 
-            const projects = dbService.getProjects();
+            const projects = dbService.getProjects(userId);
             if (projects.includes(projectName)) {
               await context.reply(
                 `⚠️ Проект "${projectName}" уже существует. Попробуйте другое название.`
@@ -306,7 +320,7 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
               return;
             }
 
-            dbService.addProject(projectName);
+            dbService.addProject(projectName, userId);
 
             await context.reply(
               `✅ Проект "${projectName}" успешно создан!\n\n<b>Что дальше?</b>\n• Добавляйте задачи и назначайте их в этот проект\n• Используйте фильтр по проектам для просмотра задач проекта`,
@@ -338,11 +352,13 @@ export function setupProjectCallbacks(bot: Telegraf<Context<Update>>) {
    */
   bot.action(/^project_tasks:(.+)$/, async (ctx) => {
     const project = ctx.match[1];
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
 
     try {
       logAction("Навигация: Пользователь открыл список задач проекта", project);
 
-      const tasks = dbService.getTasksByFilter({ project });
+      const tasks = dbService.getTasksByFilter({ project, user_id: userId });
       const activeTasks = tasks.filter(
         (task) => task.status !== TASK_STATUS.DONE
       );

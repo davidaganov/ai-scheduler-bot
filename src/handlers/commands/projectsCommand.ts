@@ -11,22 +11,22 @@ import { SCREEN_STATE } from "../../types";
 export function setupProjectsCommand(bot: Telegraf<Context<Update>>) {
   bot.command("projects", async (ctx) => {
     try {
-      const projects = dbService.getProjects();
+      if (!ctx.from) return;
+      const userId = ctx.from.id;
+
+      const projects = dbService.getProjects(userId);
 
       if (projects.length === 0) {
         await ctx.reply(
           "📁 У вас пока нет проектов.\n\nНажмите кнопку ниже, чтобы создать первый проект:",
-          getKeyboardByScreenState([], SCREEN_STATE.PROJECT_MANAGEMENT, {
-            projects,
-          })
+          getKeyboardByScreenState([], SCREEN_STATE.PROJECT_MANAGEMENT, {})
         );
         return;
       }
 
       let projectsInfo = "📁 Управление проектами:\n\n";
-
       projects.forEach((project) => {
-        const stats = dbService.getProjectStats(project);
+        const stats = dbService.getProjectStats(project, userId);
         projectsInfo += `📂 <b>${project}</b>\n`;
         projectsInfo += `   📊 Всего: ${stats.total} | ⏳ ${stats.notStarted} | 🚧 ${stats.inProgress} | ✅ ${stats.done}\n\n`;
       });
