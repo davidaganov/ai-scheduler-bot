@@ -1,20 +1,16 @@
-import type {
-  AccumulatedMessage,
-  PendingTasksBatch,
-  UserState,
-} from "../types";
+import type { AccumulatedMessage, PendingTasksBatch } from "../../types";
+import EventEmitter from "./eventEmitter";
 
 /**
- * Service for managing user sessions
+ * Class for managing accumulated message batches and tasks
  */
-class SessionService {
+export default class TasksBatchManager extends EventEmitter {
   private pendingTasksBatches = new Map<number, PendingTasksBatch>();
-  private userStates = new Map<number, UserState>();
 
   /**
-   * Adds message to accumulation buffer
+   * Adds a message to the accumulation buffer
    * @param chatId - Chat ID
-   * @param text - Message text
+   * @param text - Text of the message
    * @param originalMessage - Original message object
    */
   addMessageToBatch(chatId: number, text: string, originalMessage: any): void {
@@ -86,7 +82,7 @@ class SessionService {
   }
 
   /**
-   * Clears message buffer
+   * Clears the message buffer
    * @param chatId - Chat ID
    */
   clearTasksBatch(chatId: number): void {
@@ -98,42 +94,7 @@ class SessionService {
   }
 
   /**
-   * Sets user state
-   * @param chatId - Chat ID
-   * @param state - User state
-   */
-  setUserState(chatId: number, state: UserState): void {
-    this.userStates.set(chatId, state);
-  }
-
-  /**
-   * Gets user state
-   * @param chatId - Chat ID
-   * @returns Current user state
-   */
-  getUserState(chatId: number): UserState {
-    return this.userStates.get(chatId) || "idle";
-  }
-
-  /**
-   * Resets user state to idle
-   * @param chatId - Chat ID
-   */
-  clearUserState(chatId: number): void {
-    this.userStates.delete(chatId);
-  }
-
-  /**
-   * Clears all user data
-   * @param chatId - Chat ID
-   */
-  clearUserData(chatId: number): void {
-    this.clearTasksBatch(chatId);
-    this.clearUserState(chatId);
-  }
-
-  /**
-   * Forcefully starts processing accumulated messages
+   * Forcibly starts processing accumulated messages
    * @param chatId - Chat ID
    */
   processAccumulatedMessages(chatId: number): void {
@@ -153,44 +114,17 @@ class SessionService {
     this.emit("process_messages", chatId);
   }
 
-  // Simple event emitter
-  private eventCallbacks = new Map<string, ((chatId: number) => void)[]>();
-
   /**
-   * Registers event listener
-   * @param event - Event name
-   * @param callback - Callback function
-   */
-  on(event: string, callback: (chatId: number) => void): void {
-    if (!this.eventCallbacks.has(event)) {
-      this.eventCallbacks.set(event, []);
-    }
-    this.eventCallbacks.get(event)!.push(callback);
-  }
-
-  /**
-   * Emits event
-   * @param event - Event name
+   * Gets full information about the batch
    * @param chatId - Chat ID
-   */
-  private emit(event: string, chatId: number): void {
-    const callbacks = this.eventCallbacks.get(event);
-    if (callbacks) {
-      callbacks.forEach((callback) => callback(chatId));
-    }
-  }
-
-  /**
-   * Gets complete batch information
-   * @param chatId - Chat ID
-   * @returns Pending tasks batch or undefined
+   * @returns Batch of tasks or undefined
    */
   getAccumulatedBatch(chatId: number): PendingTasksBatch | undefined {
     return this.pendingTasksBatches.get(chatId);
   }
 
   /**
-   * Sets status message ID
+   * Sets the ID of the message with the status
    * @param chatId - Chat ID
    * @param messageId - Message ID
    */
@@ -201,5 +135,3 @@ class SessionService {
     }
   }
 }
-
-export const sessionService = new SessionService();

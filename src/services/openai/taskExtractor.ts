@@ -1,36 +1,20 @@
-import OpenAI from "openai";
+import OpenAIService from "./openaiService";
+import { simpleTextAnalysis, simpleGrouping } from "./fallbackAnalysis";
 
 /**
- * Service for interacting with OpenAI API and fallback text analysis
+ * Class for extracting information about tasks from messages
  */
-class OpenAIService {
-  private openai: OpenAI | null = null;
-  private useOpenAI: boolean;
-
-  constructor() {
-    this.useOpenAI = !!process.env.OPENAI_API_KEY;
-
-    if (this.useOpenAI) {
-      this.openai = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
-        timeout: 15000, // 15 second timeout
-      });
-      console.log("OpenAI сервис инициализирован");
-    } else {
-      console.log("OpenAI отключен, используется простой анализ текста");
-    }
-  }
-
+export default class TaskExtractor extends OpenAIService {
   /**
-   * Analyzes message and extracts task description using OpenAI or fallback analysis
-   * @param message - Message text to analyze
-   * @returns Object containing task description
+   * Analyzes a message and extracts a task description
+   * @param message - Text of the message to analyze
+   * @returns Object with the task description
    */
   async extractTaskInfo(message: string): Promise<{ description: string }> {
     // If OpenAI is disabled or unavailable, use simple analysis
-    if (!this.useOpenAI || !this.openai) {
+    if (!this.isApiAvailable()) {
       console.log("Используем простой анализ текста (OpenAI отключен)");
-      return this.simpleTextAnalysis(message);
+      return simpleTextAnalysis(message);
     }
 
     try {
@@ -41,7 +25,7 @@ class OpenAIService {
         setTimeout(() => reject(new Error("OpenAI request timeout")), 10000); // 10 seconds
       });
 
-      const apiPromise = this.openai.chat.completions.create({
+      const apiPromise = this.openai!.chat.completions.create({
         model: "gpt-3.5-turbo",
         messages: [
           {
@@ -68,7 +52,7 @@ class OpenAIService {
 
       if (!content) {
         console.log("Пустой ответ от OpenAI, используем простой анализ");
-        return this.simpleTextAnalysis(message);
+        return simpleTextAnalysis(message);
       }
 
       try {
@@ -85,33 +69,33 @@ class OpenAIService {
         } else {
           // If JSON not found, use simple text analysis
           console.log("JSON не найден, используем простой анализ");
-          return this.simpleTextAnalysis(message);
+          return simpleTextAnalysis(message);
         }
       } catch (parseError) {
         console.log("Ошибка парсинга JSON:", parseError);
-        return this.simpleTextAnalysis(message);
+        return simpleTextAnalysis(message);
       }
     } catch (error: any) {
       console.error("Ошибка при запросе к OpenAI:", error.message);
 
       // For any errors, return simple analysis
       console.log("Переключаемся на простой анализ текста");
-      return this.simpleTextAnalysis(message);
+      return simpleTextAnalysis(message);
     }
   }
 
   /**
    * Analyzes a group of messages and groups them into separate tasks
-   * @param messages - Array of message strings to analyze
+   * @param messages - Array of text messages to analyze
    * @returns Array of task descriptions
    */
   async groupMessagesIntoTasks(messages: string[]): Promise<string[]> {
     // If OpenAI is disabled or unavailable, use simple analysis
-    if (!this.useOpenAI || !this.openai) {
+    if (!this.isApiAvailable()) {
       console.log(
         "Используем простой анализ для группировки (OpenAI отключен)"
       );
-      return this.simpleGrouping(messages);
+      return simpleGrouping(messages);
     }
 
     try {
@@ -129,7 +113,7 @@ class OpenAIService {
         setTimeout(() => reject(new Error("OpenAI request timeout")), 15000); // 15 seconds for complex analysis
       });
 
-      const apiPromise = this.openai.chat.completions.create({
+      const apiPromise = this.openai!.chat.completions.create({
         model: "gpt-3.5-turbo",
         messages: [
           {
@@ -159,7 +143,7 @@ class OpenAIService {
 
       if (!content) {
         console.log("Пустой ответ от OpenAI, используем простую группировку");
-        return this.simpleGrouping(messages);
+        return simpleGrouping(messages);
       }
 
       try {
@@ -176,7 +160,7 @@ class OpenAIService {
               `Успешно сгруппировано в ${tasks.length} задач:`,
               tasks
             );
-            return tasks.length > 0 ? tasks : this.simpleGrouping(messages);
+            return tasks.length > 0 ? tasks : simpleGrouping(messages);
           }
         }
 
@@ -184,10 +168,10 @@ class OpenAIService {
         console.log(
           "Не удалось распарсить массив задач, используем простую группировку"
         );
-        return this.simpleGrouping(messages);
+        return simpleGrouping(messages);
       } catch (parseError) {
         console.log("Ошибка парсинга JSON для группировки:", parseError);
-        return this.simpleGrouping(messages);
+        return simpleGrouping(messages);
       }
     } catch (error: any) {
       console.error(
@@ -197,53 +181,7 @@ class OpenAIService {
 
       // For any errors, return simple grouping
       console.log("Переключаемся на простую группировку");
-      return this.simpleGrouping(messages);
+      return simpleGrouping(messages);
     }
   }
-
-  /**
-   * Simple text analysis without OpenAI
-   * @param message - Message text to analyze
-   * @returns Object containing task description
-   */
-  private simpleTextAnalysis(message: string): {
-    description: string;
-  } {
-    // Extract first sentence as description
-    const sentences = message.split(/[.!?]+/);
-    const description =
-      sentences[0]?.trim().slice(0, 100) || message.slice(0, 100);
-
-    const result = { description };
-    console.log("Простой анализ завершен:", result);
-    return result;
-  }
-
-  /**
-   * Simple message grouping without OpenAI
-   * @param messages - Array of message strings
-   * @returns Array of task descriptions
-   */
-  private simpleGrouping(messages: string[]): string[] {
-    if (messages.length === 0) return [];
-
-    // Each message becomes a separate task with its real content
-    const tasks = messages.map((message) => {
-      // Take first sentence or first 100 characters as task description
-      const sentences = message.split(/[.!?]+/);
-      let description = sentences[0]?.trim() || message.trim();
-
-      // If description is very long, truncate it
-      if (description.length > 100) {
-        description = description.slice(0, 97) + "...";
-      }
-
-      return description;
-    });
-
-    console.log(`Простая группировка завершена: ${tasks.length} задач`, tasks);
-    return tasks;
-  }
 }
-
-export const openaiService = new OpenAIService();
