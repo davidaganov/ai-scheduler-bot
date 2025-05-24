@@ -55,33 +55,59 @@ npm start
 
 ## Команды бота
 
-- `/start` - Приветствие и инструкции
-- `/help` - Список всех команд
-- `/tasks` - Список всех задач
-- `/task ID` - Информация о задаче
-- `/projects` - Фильтр по проектам
-- `/status` - Фильтр по статусу
-- `/done ID` - Отметить задачу как выполненную
-- `/start_task ID` - Начать задачу (статус "в работе")
-- `/delete ID` - Удалить задачу
+- `/start` - Начать работу с ботом
+- `/list` - Показать список задач
+- `/projects` - Управление проектами
+- `/help` - Получить справку по боту
 
 ## Структура проекта
 
 ```
 src/
-  ├── handlers/        # Обработчики событий бота
-  ├── services/        # Сервисы для работы с API и БД
-  ├── types/           # TypeScript типы
-  ├── utils/           # Вспомогательные функции
-  └── index.ts         # Точка входа
+  ├── database/            # База данных и запросы
+  │   ├── databaseService.ts  # Базовый класс с инициализацией
+  │   ├── taskQueries.ts      # Запросы для задач
+  │   ├── projectQueries.ts   # Запросы для проектов
+  │   └── index.ts            # Экспорты
+  │
+  ├── formatter/           # Форматирование данных
+  │   ├── dateFormatters.ts   # Форматирование дат
+  │   ├── statusFormatters.ts # Форматирование статусов
+  │   ├── taskFormatters.ts   # Форматирование задач
+  │   └── index.ts            # Экспорты
+  │
+  ├── handlers/            # Обработчики событий бота
+  │   ├── callbacks/          # Обработчики callback-запросов
+  │   ├── commands/           # Обработчики команд
+  │   ├── messages/           # Обработчики сообщений
+  │   └── index.ts            # Экспорты
+  │
+  ├── keyboard/            # Клавиатуры для интерфейса
+  │   ├── taskKeyboards.ts    # Клавиатуры для задач
+  │   ├── projectKeyboards.ts # Клавиатуры для проектов
+  │   ├── commonKeyboards.ts  # Общие клавиатуры
+  │   ├── screenState.ts      # Функция getKeyboardByScreenState
+  │   └── index.ts            # Экспорты
+  │
+  ├── openai/              # Интеграция с OpenAI
+  │   ├── openaiService.ts    # Базовый класс
+  │   ├── fallbackAnalysis.ts # Резервный анализ
+  │   ├── taskExtractor.ts    # Извлечение задач
+  │   └── index.ts            # Экспорты
+  │
+  ├── session/             # Управление сессиями
+  │   ├── eventEmitter.ts     # Механизм событий
+  │   ├── tasksBatchManager.ts # Управление пакетами задач
+  │   ├── stateManager.ts     # Управление состоянием
+  │   ├── sessionService.ts   # Основной сервис
+  │   └── index.ts            # Экспорты
+  │
+  ├── types/               # TypeScript типы
+  │   └── enums/              # Перечисления
+  │
+  ├── utils/               # Вспомогательные функции
+  │
+  └── index.ts             # Точка входа
 
-db/                   # База данных SQLite
-```
-
-## Разработка
-
-Для удобной разработки с автоматической перезагрузкой при изменениях:
-
-```
-npm run watch
+db/                      # База данных SQLite
 ```
