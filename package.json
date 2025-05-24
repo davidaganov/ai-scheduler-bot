@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts",
+    "dev": "tsc && ts-node src/index.ts",
     "watch": "nodemon --exec ts-node src/index.ts"
   },
   "keywords": [

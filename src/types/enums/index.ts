@@ -6,3 +6,4 @@ export * from "./taskAction";
 export * from "./tasksFilter";
 export * from "./globalAction";
 export * from "./projectAction";
+export * from "./screenState";

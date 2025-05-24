@@ -20,10 +20,41 @@ export function setupMessageHandlers(bot: Telegraf<Context<Update>>) {
     await processAccumulatedMessages(chatId, bot);
   });
 
+  // Handle text links for task details
   bot.on("message", async (ctx) => {
+    // Check if message has entities
     const message = ctx.message as
       | Message.TextMessage
       | Message.CaptionableMessage;
+
+    if (
+      "entities" in message &&
+      message.entities &&
+      message.entities.length > 0
+    ) {
+      const textEntities = message.entities.filter(
+        (entity) => entity.type === "text_link"
+      );
+
+      for (const entity of textEntities) {
+        if (entity.url && entity.url.startsWith("task_info:")) {
+          const taskId = parseInt(entity.url.split(":")[1]);
+          if (!isNaN(taskId)) {
+            const task = dbService.getTaskById(taskId);
+            if (task) {
+              await ctx.reply(formatTask(task), {
+                parse_mode: "HTML",
+                link_preview_options: { is_disabled: true },
+                ...createTaskActionsKeyboard(taskId, task.status),
+              });
+              return; // Process only one task link at a time
+            }
+          }
+        }
+      }
+    }
+
+    // Continue with regular message processing
     const chatId = ctx.chat.id;
 
     // Check user state

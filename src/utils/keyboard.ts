@@ -7,6 +7,7 @@ import {
   TASKS_FILTER,
   GLOBAL_ACTION,
   PROJECT_ACTION,
+  SCREEN_STATE,
 } from "../types";
 
 /**
@@ -96,7 +97,10 @@ export function createStatusFilterKeyboard() {
       ),
       Markup.button.callback(TASKS_FILTER.ALL, "filter_status:all"),
     ],
-    [Markup.button.callback(TASKS_FILTER.PROJECTS, "show_project_filter")],
+    [
+      Markup.button.callback("🔍 Все задачи", "show_task_list"),
+      Markup.button.callback("◀️ Назад", "show_task_list"),
+    ],
   ]);
 }
 
@@ -121,10 +125,8 @@ export function createProjectFilterKeyboard(projects: string[]) {
     Markup.button.callback(TASKS_FILTER.PROJECTS, "filter_project:all"),
   ]);
 
-  // Add navigation button
-  rows.push([
-    Markup.button.callback(TASKS_FILTER.STATUSES, "show_status_filter"),
-  ]);
+  // "Назад" button only on filter screen
+  rows.push([Markup.button.callback("◀️ Назад", "show_task_list")]);
 
   return Markup.inlineKeyboard(rows);
 }
@@ -201,27 +203,19 @@ export function createTasksConfirmationKeyboard(projects: string[]) {
 export function createTaskListKeyboard(tasks: any[]) {
   // Filter tasks with valid id
   const validTasks = tasks.filter((task) => task.id != null);
-
-  if (validTasks.length === 0) {
-    return createMainTasksKeyboard();
-  }
-
-  // Create ℹ️ buttons for each task
-  const taskButtons = validTasks.map((task, index) =>
-    Markup.button.callback(`${index + 1}. ℹ️`, `task_info:${task.id}`)
-  );
-
-  // Group buttons by 4 per row for compactness
   const rows = [];
-  for (let i = 0; i < taskButtons.length; i += 4) {
-    rows.push(taskButtons.slice(i, i + 4));
+
+  // Create callback buttons for each task
+  for (const task of validTasks) {
+    rows.push([
+      Markup.button.callback(`🔗 Задача #${task.id}`, `task_info:${task.id}`),
+    ]);
   }
 
-  // Add main navigation buttons
-  rows.push([
-    Markup.button.callback(TASKS_FILTER.STATUSES, "show_status_filter"),
-    Markup.button.callback(TASKS_FILTER.PROJECTS, "show_project_filter"),
-  ]);
+  // Add buttons at the bottom
+  rows.push([Markup.button.callback("📊 Статусы", "show_statuses_screen")]);
+
+  rows.push([Markup.button.callback("📁 Проекты", "show_project_filter")]);
 
   return Markup.inlineKeyboard(rows);
 }
@@ -246,7 +240,6 @@ export function createProjectManagementKeyboard(projects: string[]) {
     }
   }
 
-  // Add new project button
   rows.push([Markup.button.callback(PROJECT_ACTION.ADD, "add_new_project")]);
 
   return Markup.inlineKeyboard(rows);
@@ -287,4 +280,134 @@ export function createProjectConfirmationKeyboard(
       ),
     ],
   ]);
+}
+
+/**
+ * Creates keyboard for status filter buttons (main screen)
+ * @returns Inline keyboard markup
+ */
+export function createStatusButtonsKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback(
+        `${TASK_STATUS_EMOJI.NOT_STARTED} Не начато`,
+        "filter_status:not_started"
+      ),
+    ],
+    [
+      Markup.button.callback(
+        `${TASK_STATUS_EMOJI.IN_PROGRESS} В работе`,
+        "filter_status:in_progress"
+      ),
+    ],
+    [
+      Markup.button.callback(
+        `${TASK_STATUS_EMOJI.DONE} Сделано`,
+        "filter_status:done"
+      ),
+    ],
+    [
+      Markup.button.callback(`🔍 Все задачи`, "filter_status:all"),
+      Markup.button.callback(`◀️ Назад`, "show_task_list"),
+    ],
+  ]);
+}
+
+/**
+ * Creates keyboard for tasks filtered by status
+ * @param tasks - Array of tasks
+ * @returns Inline keyboard markup
+ */
+export function createFilteredByStatusKeyboard(tasks: any[]) {
+  // Filter tasks with valid id
+  const validTasks = tasks.filter((task) => task.id != null);
+  const rows = [];
+
+  // Create callback buttons for each task
+  for (const task of validTasks) {
+    rows.push([
+      Markup.button.callback(`🔗 Задача #${task.id}`, `task_info:${task.id}`),
+    ]);
+  }
+
+  // For status-filtered screen, only back/all tasks buttons
+  rows.push([
+    Markup.button.callback("🔍 Все задачи", "show_task_list"),
+    Markup.button.callback("◀️ Назад", "show_task_list"),
+  ]);
+
+  return Markup.inlineKeyboard(rows);
+}
+
+/**
+ * Creates keyboard for tasks filtered by project
+ * @param tasks - Array of tasks
+ * @returns Inline keyboard markup
+ */
+export function createFilteredByProjectKeyboard(tasks: any[]) {
+  // Filter tasks with valid id
+  const validTasks = tasks.filter((task) => task.id != null);
+  const rows = [];
+
+  // Create callback buttons for each task
+  for (const task of validTasks) {
+    rows.push([
+      Markup.button.callback(`🔗 Задача #${task.id}`, `task_info:${task.id}`),
+    ]);
+  }
+
+  // For project-filtered screen, show "All tasks" and "Back" buttons
+  rows.push([
+    Markup.button.callback("🔍 Все задачи", "show_task_list"),
+    Markup.button.callback("◀️ Назад", "show_task_list"),
+  ]);
+
+  return Markup.inlineKeyboard(rows);
+}
+
+/**
+ * Get the appropriate keyboard based on the screen state
+ * @param tasks - Array of tasks
+ * @param screenState - Current screen state
+ * @param additionalData - Additional data needed for some keyboards (e.g. projects list)
+ * @returns Inline keyboard markup
+ */
+export function getKeyboardByScreenState(
+  tasks: any[],
+  screenState: SCREEN_STATE,
+  additionalData?: any
+) {
+  const filteredTasks = tasks.filter(
+    (task) => task.status !== TASK_STATUS.DONE
+  );
+
+  console.log(screenState);
+
+  switch (screenState) {
+    case SCREEN_STATE.MAIN_LIST:
+      return createTaskListKeyboard(filteredTasks);
+
+    case SCREEN_STATE.FILTERED_BY_STATUS:
+      return createFilteredByStatusKeyboard(filteredTasks);
+
+    case SCREEN_STATE.FILTERED_BY_PROJECT:
+      return createFilteredByProjectKeyboard(filteredTasks);
+
+    case SCREEN_STATE.STATUS_SELECTION:
+      return createStatusButtonsKeyboard();
+
+    case SCREEN_STATE.PROJECT_SELECTION:
+      return createProjectFilterKeyboard(additionalData?.projects || []);
+
+    case SCREEN_STATE.PROJECT_MANAGEMENT:
+      return createProjectManagementKeyboard(additionalData?.projects || []);
+
+    case SCREEN_STATE.TASK_DETAILS:
+      const taskId = additionalData?.taskId;
+      const status = additionalData?.status || TASK_STATUS.NOT_STARTED;
+      return createTaskActionsKeyboard(taskId, status);
+
+    default:
+      return createTaskListKeyboard(filteredTasks);
+  }
 }

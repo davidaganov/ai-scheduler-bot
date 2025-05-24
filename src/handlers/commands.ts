@@ -1,13 +1,8 @@
 import { Context, Telegraf } from "telegraf";
 import { Update } from "telegraf/typings/core/types/typegram";
 import dbService from "../services/database";
-import {
-  formatTaskList,
-  createTaskListHeader,
-  createTaskListKeyboard,
-  createProjectManagementKeyboard,
-} from "../utils";
-import type { Task } from "../types";
+import { getKeyboardByScreenState } from "../utils";
+import { TASK_STATUS, TASK_STATUS_EMOJI, SCREEN_STATE } from "../types";
 
 /**
  * Sets up command handlers for the bot
@@ -45,12 +40,28 @@ export function setupCommandHandlers(bot: Telegraf<Context<Update>>) {
   bot.command("tasks", (ctx) => {
     const tasks = dbService.getAllTasks();
 
-    ctx.reply(
-      createTaskListHeader() + "\n\n" + formatTaskList(tasks, false), // false = hide completed tasks
-      createTaskListKeyboard(
-        tasks.filter((task: Task) => task.status !== "done")
-      )
-    );
+    // Get statistics by statuses
+    const notStarted = tasks.filter(
+      (task) => task.status === TASK_STATUS.NOT_STARTED
+    ).length;
+    const inProgress = tasks.filter(
+      (task) => task.status === TASK_STATUS.IN_PROGRESS
+    ).length;
+    const done = tasks.filter(
+      (task) => task.status === TASK_STATUS.DONE
+    ).length;
+
+    const text =
+      `📋 Список задач • Статусы\n\n` +
+      `${TASK_STATUS_EMOJI.NOT_STARTED} Не начато: ${notStarted}\n` +
+      `${TASK_STATUS_EMOJI.IN_PROGRESS} В работе: ${inProgress}\n` +
+      `${TASK_STATUS_EMOJI.DONE} Сделано: ${done}\n\n` +
+      `Всего задач: ${tasks.length}`;
+
+    ctx.reply(text, {
+      parse_mode: "HTML",
+      ...getKeyboardByScreenState(tasks, SCREEN_STATE.STATUS_SELECTION),
+    });
   });
 
   /**
@@ -62,7 +73,9 @@ export function setupCommandHandlers(bot: Telegraf<Context<Update>>) {
     if (projects.length === 0) {
       return ctx.reply(
         "📁 У вас пока нет проектов.\n\nНажмите кнопку ниже, чтобы создать первый проект:",
-        createProjectManagementKeyboard([])
+        getKeyboardByScreenState([], SCREEN_STATE.PROJECT_MANAGEMENT, {
+          projects,
+        })
       );
     }
 
@@ -76,7 +89,9 @@ export function setupCommandHandlers(bot: Telegraf<Context<Update>>) {
 
     ctx.reply(projectsInfo, {
       parse_mode: "HTML",
-      ...createProjectManagementKeyboard(projects),
+      ...getKeyboardByScreenState([], SCREEN_STATE.PROJECT_MANAGEMENT, {
+        projects,
+      }),
     });
   });
 }

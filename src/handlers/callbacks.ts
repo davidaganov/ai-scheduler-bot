@@ -7,15 +7,20 @@ import {
   formatTaskList,
   createTaskListHeader,
   formatTask,
-  createStatusFilterKeyboard,
-  createProjectFilterKeyboard,
   createTaskActionsKeyboard,
   createConfirmationKeyboard,
   createProjectManagementKeyboard,
   createProjectActionsKeyboard,
   createProjectConfirmationKeyboard,
+  createStatusButtonsKeyboard,
+  getKeyboardByScreenState,
 } from "../utils";
-import { TASK_STATUS, TASK_STATUS_EMOJI, TASK_STATUS_TITLE } from "../types";
+import {
+  TASK_STATUS,
+  TASK_STATUS_EMOJI,
+  TASK_STATUS_TITLE,
+  SCREEN_STATE,
+} from "../types";
 
 /**
  * Safe callback query answer to prevent errors
@@ -41,12 +46,34 @@ export function setupCallbackHandlers(bot: Telegraf<Context<Update>>) {
    */
   bot.action("show_status_filter", async (ctx) => {
     try {
-      await ctx.editMessageReplyMarkup(
-        createStatusFilterKeyboard().reply_markup
-      );
-      await safeAnswerCbQuery(ctx, "Выберите статус");
+      const tasks = dbService.getAllTasks();
+
+      // Получаем статистику по статусам
+      const notStarted = tasks.filter(
+        (task) => task.status === TASK_STATUS.NOT_STARTED
+      ).length;
+      const inProgress = tasks.filter(
+        (task) => task.status === TASK_STATUS.IN_PROGRESS
+      ).length;
+      const done = tasks.filter(
+        (task) => task.status === TASK_STATUS.DONE
+      ).length;
+
+      const text =
+        `📋 Список задач • Статусы\n\n` +
+        `${TASK_STATUS_EMOJI.NOT_STARTED} Не начато: ${notStarted}\n` +
+        `${TASK_STATUS_EMOJI.IN_PROGRESS} В работе: ${inProgress}\n` +
+        `${TASK_STATUS_EMOJI.DONE} Сделано: ${done}\n\n` +
+        `Всего задач: ${tasks.length}`;
+
+      await ctx.editMessageText(text, {
+        parse_mode: "HTML",
+        ...getKeyboardByScreenState(tasks, SCREEN_STATE.STATUS_SELECTION),
+      });
+
+      await safeAnswerCbQuery(ctx, "Статусы задач");
     } catch (error) {
-      console.log("Ошибка при изменении клавиатуры:", error);
+      console.log("Ошибка при показе экрана статусов:", error);
       await safeAnswerCbQuery(ctx, "Попробуйте еще раз");
     }
   });
@@ -64,7 +91,9 @@ export function setupCallbackHandlers(bot: Telegraf<Context<Update>>) {
 
     try {
       await ctx.editMessageReplyMarkup(
-        createProjectFilterKeyboard(projects).reply_markup
+        getKeyboardByScreenState([], SCREEN_STATE.PROJECT_SELECTION, {
+          projects,
+        }).reply_markup
       );
       await safeAnswerCbQuery(ctx, "Выберите проект");
     } catch (error) {
@@ -113,7 +142,7 @@ export function setupCallbackHandlers(bot: Telegraf<Context<Update>>) {
 
           await ctx.editMessageText(allTasksText, {
             parse_mode: "HTML",
-            ...createStatusFilterKeyboard(),
+            ...getKeyboardByScreenState(allTasks, SCREEN_STATE.MAIN_LIST),
           });
           await safeAnswerCbQuery(ctx, "Фильтр сброшен");
           return;
@@ -126,9 +155,16 @@ export function setupCallbackHandlers(bot: Telegraf<Context<Update>>) {
         }
       }
 
+      const filteredTasksForKeyboard = showCompleted
+        ? tasks
+        : tasks.filter((task) => task.status !== TASK_STATUS.DONE);
+
       await ctx.editMessageText(newText, {
         parse_mode: "HTML",
-        ...createStatusFilterKeyboard(),
+        ...getKeyboardByScreenState(
+          filteredTasksForKeyboard,
+          SCREEN_STATE.FILTERED_BY_STATUS
+        ),
       });
 
       await safeAnswerCbQuery(
@@ -180,7 +216,7 @@ export function setupCallbackHandlers(bot: Telegraf<Context<Update>>) {
 
           await ctx.editMessageText(allTasksText, {
             parse_mode: "HTML",
-            ...createProjectFilterKeyboard(dbService.getProjects()),
+            ...getKeyboardByScreenState(allTasks, SCREEN_STATE.MAIN_LIST),
           });
           await safeAnswerCbQuery(ctx, "Фильтр сброшен");
           return;
@@ -193,9 +229,16 @@ export function setupCallbackHandlers(bot: Telegraf<Context<Update>>) {
         }
       }
 
+      const filteredTasksForKeyboard = tasks.filter(
+        (task) => task.status !== TASK_STATUS.DONE
+      );
+
       await ctx.editMessageText(newText, {
         parse_mode: "HTML",
-        ...createProjectFilterKeyboard(dbService.getProjects()),
+        ...getKeyboardByScreenState(
+          filteredTasksForKeyboard,
+          SCREEN_STATE.FILTERED_BY_PROJECT
+        ),
       });
 
       await safeAnswerCbQuery(
@@ -447,7 +490,7 @@ export function setupCallbackHandlers(bot: Telegraf<Context<Update>>) {
   });
 
   /**
-   * Task information (new handler for ℹ️ buttons)
+   * Task information (handler for task buttons)
    */
   bot.action(/^task_info:(\d+)$/, async (ctx) => {
     const taskId = parseInt(ctx.match[1]);
@@ -463,7 +506,10 @@ export function setupCallbackHandlers(bot: Telegraf<Context<Update>>) {
       await ctx.reply(formatTask(task), {
         parse_mode: "HTML",
         link_preview_options: { is_disabled: true },
-        ...createTaskActionsKeyboard(taskId, task.status),
+        ...getKeyboardByScreenState([], SCREEN_STATE.TASK_DETAILS, {
+          taskId: task.id,
+          status: task.status,
+        }),
       });
 
       await safeAnswerCbQuery(ctx, `Информация о задаче #${taskId}`);
@@ -687,7 +733,9 @@ export function setupCallbackHandlers(bot: Telegraf<Context<Update>>) {
       if (projects.length === 0) {
         await ctx.editMessageText(
           "📁 У вас пока нет проектов.\n\nНажмите кнопку ниже, чтобы создать первый проект:",
-          createProjectManagementKeyboard([])
+          getKeyboardByScreenState([], SCREEN_STATE.PROJECT_MANAGEMENT, {
+            projects,
+          })
         );
       } else {
         let projectsInfo = "📁 Управление проектами:\n\n";
@@ -700,7 +748,9 @@ export function setupCallbackHandlers(bot: Telegraf<Context<Update>>) {
 
         await ctx.editMessageText(projectsInfo, {
           parse_mode: "HTML",
-          ...createProjectManagementKeyboard(projects),
+          ...getKeyboardByScreenState([], SCREEN_STATE.PROJECT_MANAGEMENT, {
+            projects,
+          }),
         });
       }
 
@@ -809,6 +859,67 @@ export function setupCallbackHandlers(bot: Telegraf<Context<Update>>) {
     } catch (error: any) {
       console.log("Ошибка при отмене создания задач:", error.message);
       await safeAnswerCbQuery(ctx, "Ошибка при отмене");
+    }
+  });
+
+  /**
+   * Show task list (return from filters)
+   */
+  bot.action("show_task_list", async (ctx) => {
+    try {
+      const tasks = dbService.getAllTasks();
+      const filteredTasks = tasks.filter(
+        (task) => task.status !== TASK_STATUS.DONE
+      );
+
+      const text =
+        createTaskListHeader() + "\n\n" + formatTaskList(tasks, false);
+
+      await ctx.editMessageText(text, {
+        parse_mode: "HTML",
+        ...getKeyboardByScreenState(filteredTasks, SCREEN_STATE.MAIN_LIST),
+      });
+
+      await safeAnswerCbQuery(ctx, "Список задач");
+    } catch (error) {
+      console.log("Ошибка при возврате к списку задач:", error);
+      await safeAnswerCbQuery(ctx, "Попробуйте еще раз");
+    }
+  });
+
+  /**
+   * Show status screen
+   */
+  bot.action("show_statuses_screen", async (ctx) => {
+    try {
+      const tasks = dbService.getAllTasks();
+
+      const notStarted = tasks.filter(
+        (task) => task.status === TASK_STATUS.NOT_STARTED
+      ).length;
+      const inProgress = tasks.filter(
+        (task) => task.status === TASK_STATUS.IN_PROGRESS
+      ).length;
+      const done = tasks.filter(
+        (task) => task.status === TASK_STATUS.DONE
+      ).length;
+
+      const text =
+        `📋 Список задач • Статусы\n\n` +
+        `${TASK_STATUS_EMOJI.NOT_STARTED} Не начато: ${notStarted}\n` +
+        `${TASK_STATUS_EMOJI.IN_PROGRESS} В работе: ${inProgress}\n` +
+        `${TASK_STATUS_EMOJI.DONE} Сделано: ${done}\n\n` +
+        `Всего задач: ${tasks.length}`;
+
+      await ctx.editMessageText(text, {
+        parse_mode: "HTML",
+        ...createStatusButtonsKeyboard(),
+      });
+
+      await safeAnswerCbQuery(ctx, "Статусы задач");
+    } catch (error) {
+      console.log("Ошибка при показе экрана статусов:", error);
+      await safeAnswerCbQuery(ctx, "Попробуйте еще раз");
     }
   });
 }
