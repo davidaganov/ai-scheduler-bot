@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import path from "path";
+import fs from "fs";
 
 /**
  * Database service for managing tasks and projects using SQLite
@@ -8,7 +9,15 @@ class DatabaseService {
   protected db: Database.Database;
 
   constructor() {
-    this.db = new Database(path.resolve(__dirname, "../../../db/tasks.db"));
+    const dbDir = path.resolve(__dirname, "../../../db");
+    const dbPath = path.join(dbDir, "tasks.db");
+
+    // Ensure database directory exists
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
+    }
+
+    this.db = new Database(dbPath);
     this.initialize();
   }
 
